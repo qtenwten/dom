@@ -16,7 +16,7 @@ The application is intentionally standalone:
 - it can be deployed at a site root or under a path such as /dom/;
 - the service worker derives its base path from its own registration scope;
 - the PWA manifest uses relative start and scope URLs;
-- the project has no mandatory build step.
+- CI and GitHub Pages deployment are owned by this repository; qsen-source is not part of the Dom deployment path.
 
 ## Current structure
 
@@ -55,6 +55,15 @@ sw.js
 
 icon.svg
 - standalone application icon.
+
+package.json and scripts/
+- lightweight validation and static dist build.
+
+.github/workflows/ci.yml
+- runs checks and build on pushes to main and pull requests.
+
+.github/workflows/pages.yml
+- builds and deploys dist through GitHub Pages on pushes to main.
 
 ## Content model
 
