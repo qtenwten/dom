@@ -1,0 +1,19 @@
+{
+  "name": "Дом - справочник по ремонту и строительству",
+  "short_name": "Дом",
+  "description": "Пошаговый мобильный справочник по ремонту и строительству.",
+  "lang": "ru",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2efe7",
+  "theme_color": "#1d211f",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
