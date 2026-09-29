@@ -7,22 +7,27 @@ const required = [
   'src/main.jsx',
   'src/styles.css',
   'content.js',
+  'surface-content.js',
   'manifest.webmanifest',
   'sw.js',
   'icon.svg',
 ]
 
 for (const file of required) await access(file)
-for (const file of ['content.js', 'sw.js']) {
+for (const file of ['content.js', 'surface-content.js', 'sw.js']) {
   const result = spawnSync(process.execPath, ['--check', file], { stdio: 'inherit' })
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
 
-const { DOM_CATEGORIES, DOM_GUIDES, DOM_SOURCES } = await import('../content.js')
-if (DOM_CATEGORIES.length < 13) throw new Error(`Expected at least 13 primary categories, found ${DOM_CATEGORIES.length}.`)
-if (DOM_GUIDES.length < 100) throw new Error(`Research corpus unexpectedly small: ${DOM_GUIDES.length} guides.`)
-if (Object.keys(DOM_SOURCES).length < 20) throw new Error('Source library unexpectedly small.')
+const { DOM_CATEGORIES, DOM_GUIDES, DOM_SOURCES, DOM_ROOMS, DOM_SURFACE_FAMILIES, DOM_JOINT_TYPES, DOM_BASEBOARD_TYPES } = await import('../content.js')
+if (DOM_CATEGORIES.length < 14) throw new Error(`Expected at least 14 primary categories, found ${DOM_CATEGORIES.length}.`)
+if (DOM_GUIDES.length < 170) throw new Error(`Research corpus unexpectedly small: ${DOM_GUIDES.length} guides.`)
+if (Object.keys(DOM_SOURCES).length < 40) throw new Error('Source library unexpectedly small.')
+if (DOM_ROOMS.length < 10) throw new Error('Room selector is incomplete.')
+if (DOM_SURFACE_FAMILIES.length < 30) throw new Error('Surface taxonomy is incomplete.')
+if (DOM_JOINT_TYPES.length < 10) throw new Error('Joint taxonomy is incomplete.')
+if (DOM_BASEBOARD_TYPES.length < 10) throw new Error('Baseboard taxonomy is incomplete.')
 
 const categoryIds = new Set(DOM_CATEGORIES.map((category) => category.id))
 const guideIds = new Set()
@@ -88,4 +93,4 @@ for (const contrastToken of ['--contrast-light-ink', '--contrast-light-muted', '
   if (!styles.includes(contrastToken)) throw new Error(`Contrast guardrail missing: ${contrastToken}`)
 }
 
-console.log(`Dom premium React checks passed: ${DOM_CATEGORIES.length} categories, ${DOM_GUIDES.length} guides, ${Object.keys(DOM_SOURCES).length} research sources.`)
+console.log(`Dom premium React checks passed: ${DOM_CATEGORIES.length} categories, ${DOM_GUIDES.length} guides, ${Object.keys(DOM_SOURCES).length} sources, ${DOM_ROOMS.length} rooms, ${DOM_SURFACE_FAMILIES.length} surface families.`)
