@@ -6,6 +6,7 @@ import 'iconoir/css/iconoir.css'
 import { DOM_CATEGORIES, DOM_GUIDES, DOM_CATEGORY_BY_ID, DOM_GUIDE_BY_ID, DOM_ROOMS, DOM_SURFACE_FAMILIES, DOM_JOINT_TYPES, DOM_BASEBOARD_TYPES } from '../content.js'
 import { getLemanaShopping, getGuidePracticalDetail, getMaterialSearchUrl } from '../guide-enrichment.js'
 import './styles.css'
+import PlannerPage from './planner.jsx'
 
 const STORAGE_KEY = 'qsen-dom:saved'
 const SEARCH_KEY = 'qsen-dom:last-search'
@@ -49,7 +50,7 @@ function parseRoute(hash = window.location.hash) {
   if (!bits.length || bits[0] === 'home') return { view: 'home', key: 'home' }
   if (bits[0] === 'category' && bits[1]) return { view: 'category', id: bits[1], key: `category-${bits[1]}` }
   if (bits[0] === 'guide' && bits[1]) return { view: 'guide', id: bits[1], key: `guide-${bits[1]}` }
-  if (['catalog', 'search', 'calculator', 'saved', 'project'].includes(bits[0])) return { view: bits[0], key: bits[0] }
+  if (['catalog', 'search', 'calculator', 'planner', 'saved', 'project'].includes(bits[0])) return { view: bits[0], key: bits[0] }
   return { view: 'home', key: 'home' }
 }
 
@@ -274,6 +275,7 @@ function Header({ query, setQuery, openPalette }) {
             <Link href="#/project" className={route.view === 'project' ? 'active' : ''}>Проекты</Link>
             <Link href="#/catalog" className={['catalog', 'category', 'guide'].includes(route.view) ? 'active' : ''}>База знаний</Link>
             <Link href="#/calculator" className={route.view === 'calculator' ? 'active' : ''}>Калькуляторы</Link>
+            <Link href="#/planner" className={route.view === 'planner' ? 'active' : ''}>3D планировщик</Link>
             <Link href="#/catalog">Материалы</Link>
             <Link href="#/saved">Идеи</Link>
           </nav>
@@ -290,6 +292,7 @@ function Header({ query, setQuery, openPalette }) {
         <Link href="#/project" onClick={() => setMobileMenu(false)}>Проекты <Icon name="chevron" /></Link>
         <Link href="#/catalog" onClick={() => setMobileMenu(false)}>База знаний <Icon name="chevron" /></Link>
         <Link href="#/calculator" onClick={() => setMobileMenu(false)}>Калькуляторы <Icon name="chevron" /></Link>
+        <Link href="#/planner" onClick={() => setMobileMenu(false)}>3D планировщик <Icon name="chevron" /></Link>
         <Link href="#/saved" onClick={() => setMobileMenu(false)}>Сохранённое <Icon name="chevron" /></Link>
       </div>
     </>
@@ -334,9 +337,9 @@ function Hero({ query, setQuery }) {
 
 function QuickTools() {
   const tools = [
+    ['project', '3D планировщик', 'План, стены и помещения', '#/planner'],
     ['calc', 'Калькуляторы', 'Быстрые расчёты', '#/calculator'],
     ['layers', 'Материалы', 'Подбор и нормы', '#/catalog'],
-    ['bulb', 'Идеи', 'Решения для комнат', '#/saved'],
     ['check', 'Чек-листы', 'Работа по шагам', '#/guide/drywall-partition-frame'],
   ]
   return (
@@ -797,7 +800,7 @@ function ProjectPage() {
   useEffect(() => localStorage.setItem(PROJECT_KEY, String(progress)), [progress])
   return (
     <main className="project-page-full">
-      <div className="project-appbar"><div><span className="overline">Мой проект</span><h1>Ремонт квартиры 60 м²</h1></div><div className="project-stage-control"><span>Чистовая отделка</span><input type="range" min="0" max="100" value={progress} onChange={(e) => setProgress(Number(e.target.value))} /><b>{progress}%</b></div></div>
+      <div className="project-appbar"><div><span className="overline">Мой проект</span><h1>Ремонт квартиры 60 м²</h1><Link href="#/planner" className="planner-launch-banner">Открыть 3D планировщик</Link></div><div className="project-stage-control"><span>Чистовая отделка</span><input type="range" min="0" max="100" value={progress} onChange={(e) => setProgress(Number(e.target.value))} /><b>{progress}%</b></div></div>
       <div className="project-workspace" data-reveal>
         <aside className="workspace-nav">
           <strong>Мой проект</strong>
@@ -862,7 +865,7 @@ function BottomNav() {
     ['project', 'Проект', '#/project', 'project'],
     ['saved', 'Сохранено', '#/saved', 'bookmark'],
   ]
-  return <nav className="bottom-app-nav" aria-label="Основная навигация">{items.map(([view,label,href,icon]) => <Link key={view} href={href} className={route.view === view || (view === 'catalog' && ['category','guide'].includes(route.view)) ? 'active' : ''}><span><Icon name={icon} size={20} /></span><small>{label}</small></Link>)}</nav>
+  return <nav className="bottom-app-nav" aria-label="Основная навигация">{items.map(([view,label,href,icon]) => <Link key={view} href={href} className={route.view === view || (view === 'project' && route.view === 'planner') || (view === 'catalog' && ['category','guide'].includes(route.view)) ? 'active' : ''}><span><Icon name={icon} size={20} /></span><small>{label}</small></Link>)}</nav>
 }
 
 function App() {
@@ -903,7 +906,7 @@ function App() {
 
   useEffect(() => {
     const guide = route.view === 'guide' ? DOM_GUIDE_BY_ID[route.id] : null
-    const titles = { home: 'Дом — ремонт и строительство', catalog: 'Разделы — Дом', search: 'Поиск — Дом', calculator: 'Калькуляторы — Дом', saved: 'Сохранённое — Дом', project: 'Мой проект — Дом' }
+    const titles = { home: 'Дом — ремонт и строительство', catalog: 'Разделы — Дом', search: 'Поиск — Дом', calculator: 'Калькуляторы — Дом', planner: '3D планировщик квартиры — Дом', saved: 'Сохранённое — Дом', project: 'Мой проект — Дом' }
     document.title = guide ? `${guide.title} — Дом` : (titles[route.view] || 'Дом — ремонт и строительство')
   }, [route])
 
@@ -913,6 +916,7 @@ function App() {
     : route.view === 'guide' ? <GuidePage id={route.id} />
     : route.view === 'search' ? <SearchPage query={query} setQuery={setQuery} />
     : route.view === 'calculator' ? <CalculatorPage />
+    : route.view === 'planner' ? <PlannerPage />
     : route.view === 'project' ? <ProjectPage />
     : route.view === 'saved' ? <SavedPage /> : <NotFound />
 
