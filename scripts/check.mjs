@@ -8,19 +8,21 @@ const required = [
   'src/styles.css',
   'content.js',
   'surface-content.js',
+  'guide-enrichment.js',
   'manifest.webmanifest',
   'sw.js',
   'icon.svg',
 ]
 
 for (const file of required) await access(file)
-for (const file of ['content.js', 'surface-content.js', 'sw.js']) {
+for (const file of ['content.js', 'surface-content.js', 'guide-enrichment.js', 'sw.js']) {
   const result = spawnSync(process.execPath, ['--check', file], { stdio: 'inherit' })
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
 
 const { DOM_CATEGORIES, DOM_GUIDES, DOM_SOURCES, DOM_ROOMS, DOM_SURFACE_FAMILIES, DOM_JOINT_TYPES, DOM_BASEBOARD_TYPES } = await import('../content.js')
+const { getLemanaShopping, getGuidePracticalDetail } = await import('../guide-enrichment.js')
 if (DOM_CATEGORIES.length < 14) throw new Error(`Expected at least 14 primary categories, found ${DOM_CATEGORIES.length}.`)
 if (DOM_GUIDES.length < 170) throw new Error(`Research corpus unexpectedly small: ${DOM_GUIDES.length} guides.`)
 if (Object.keys(DOM_SOURCES).length < 40) throw new Error('Source library unexpectedly small.')
@@ -44,6 +46,17 @@ for (const guide of DOM_GUIDES) {
   for (const source of guide.sources) {
     if (!source.url?.startsWith('https://')) throw new Error(`Guide ${guide.id} has an invalid source URL.`)
     if (!source.publisher || !source.type || !source.scope) throw new Error(`Guide ${guide.id} has incomplete source metadata.`)
+  }
+  const shopping = getLemanaShopping(guide)
+  if (shopping.length < 4) throw new Error(`Guide ${guide.id} has too few shopping recommendations: ${shopping.length}.`)
+  for (const item of shopping) {
+    if (!item.title || !item.spec || !item.url?.startsWith('https://lemanapro.ru')) {
+      throw new Error(`Guide ${guide.id} has an invalid Lemana Pro shopping item.`)
+    }
+  }
+  const detail = getGuidePracticalDetail(guide)
+  if (!Array.isArray(detail.selection) || !detail.selection.length || !Array.isArray(detail.quality) || !detail.quality.length || !detail.stop) {
+    throw new Error(`Guide ${guide.id} is missing practical enrichment.`)
   }
 }
 
@@ -93,4 +106,4 @@ for (const contrastToken of ['--contrast-light-ink', '--contrast-light-muted', '
   if (!styles.includes(contrastToken)) throw new Error(`Contrast guardrail missing: ${contrastToken}`)
 }
 
-console.log(`Dom premium React checks passed: ${DOM_CATEGORIES.length} categories, ${DOM_GUIDES.length} guides, ${Object.keys(DOM_SOURCES).length} sources, ${DOM_ROOMS.length} rooms, ${DOM_SURFACE_FAMILIES.length} surface families.`)
+console.log(`Dom premium React checks passed: ${DOM_CATEGORIES.length} categories, ${DOM_GUIDES.length} guides, ${Object.keys(DOM_SOURCES).length} sources, ${DOM_ROOMS.length} rooms, ${DOM_SURFACE_FAMILIES.length} surface families; every guide has practical enrichment and Lemana Pro shopping coverage.`)
