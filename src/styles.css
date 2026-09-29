@@ -656,3 +656,51 @@ img { display: block; max-width: 100%; }
   [data-reveal] { opacity:1 !important; transform:none !important; }
   .tilt { transform:none !important; }
 }
+
+
+/* Installed iOS/standalone mode: treat the viewport like a native app shell. */
+html.is-standalone {
+  background: #101311;
+  overscroll-behavior-y: none;
+}
+
+html.is-standalone body {
+  min-height: 100dvh;
+  background: #101311;
+}
+
+html.is-standalone .install-fab {
+  display: none !important;
+}
+
+@media (max-width: 680px) {
+  html.is-standalone .site-header {
+    height: calc(58px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+
+  html.is-standalone .header-inner {
+    height: 58px;
+  }
+
+  html.is-standalone .mobile-drawer {
+    top: calc(58px + env(safe-area-inset-top));
+  }
+
+  html.is-standalone .hero-premium {
+    min-height: calc(100dvh - 58px - env(safe-area-inset-top));
+  }
+
+  html.is-standalone .bottom-app-nav {
+    bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  html.is-standalone .page,
+  html.is-standalone .project-page-full {
+    min-height: calc(100dvh - 58px - env(safe-area-inset-top));
+  }
+
+  html.is-standalone .page-transition {
+    min-height: calc(100dvh - 58px - env(safe-area-inset-top));
+  }
+}
