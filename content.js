@@ -1,4 +1,5 @@
 import { SURFACE_SOURCES, SURFACE_GUIDE_DEFINITIONS, DOM_ROOMS, DOM_SURFACE_FAMILIES, DOM_JOINT_TYPES, DOM_BASEBOARD_TYPES } from './surface-content.js'
+import { getGuidePracticalDetail } from './guide-enrichment.js'
 
 export const DOM_CATEGORIES = [
   {
@@ -3971,6 +3972,7 @@ function enrichBaseGuide(guide) {
 
 function buildCoreGuide(definition) {
   const kit = CATEGORY_KITS[definition.category]
+  const practical = getGuidePracticalDetail(definition)
   return {
     id: definition.id,
     title: definition.title,
@@ -3991,13 +3993,21 @@ function buildCoreGuide(definition) {
     before: definition.before || kit.before,
     steps: [
       {
-        title: 'Оцени исходную ситуацию',
-        text: 'Осмотри существующую конструкцию, зафиксируй размеры и ограничения. До начала работы выясни, какие скрытые коммуникации и соседние узлы могут повлиять на решение.',
+        title: 'Зафиксируй исходное состояние',
+        text: 'Осмотри конструкцию, сними контрольные размеры и отметь ограничения. До начала выясни, какие коммуникации, соседние покрытия, чистовые уровни и обслуживаемые узлы могут повлиять на работу.',
+      },
+      {
+        title: 'Выбери совместимую систему',
+        text: practical.selection[0],
       },
       ...definition.points.map(([title, text]) => ({ title, text })),
       {
-        title: 'Сделай контроль до закрытия',
-        text: 'Проверь геометрию, работу узла и доступ к обслуживаемым элементам до следующего необратимого слоя отделки или закрытия конструкции.',
+        title: 'Проверь качество до следующего слоя',
+        text: practical.quality.join(' '),
+      },
+      {
+        title: 'Остановись, если причина не устранена',
+        text: practical.stop,
       },
     ],
     mistakes: definition.mistakes,
