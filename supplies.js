@@ -706,6 +706,70 @@ export const DOM_SUPPLIES = [
   },
 ]
 
+
+const VERIFIED_SUPPLY_IMAGES = {
+  'rotary-hammer-sds-plus': 'https://www.tradetools.com/media/catalog/product/cache/1/image/1200x/17f82f742ffe127f42dca9de82fb58b1/d/h/dh35pmch1z_1.jpg',
+  'masonry-drill-sds-plus': 'https://www.nalburcuk.com/idea/bc/15/myassets/products/311/master-530032-sds-plus-beton-delme-matkap-ucu-12x210-mm-57615.jpeg?revision=1765312702',
+  'socket-crown-concrete-68': 'https://www.klium.com/media/catalog/product/2/6/2608901931.jpg',
+  'drywall-hole-saw-68': 'https://cdn.klium.be/images/a9c56d5c-db4b-4725-b45c-744324e91d71/bosch_2608594497/bosch_2608594497_1064x1064.jpg',
+  'drywall-socket-box': 'https://www.sealantsandtoolsdirect.co.uk/image/cache/catalog/manufacturer-new/british-general/bg-british-general-plasterboard-electric-single-socket-switch-back-box-1gdb-1200x1200.jpg',
+  'ph2-bit': 'https://bremenar.vtexassets.com/arquivos/ids/162603/6147---Punta-Phillips--Encastre-10mm----01.jpg?v=638869892590230000',
+  'pz2-bit': 'https://mundotool.com/cdn/shop/files/bafab3fd-9818-4817-8aec-a739fce52af3.jpg?v=1723473289',
+  'bit-holder': 'https://assets.leevalley.com/Size4/10101/17K0206-magnetic-holder-and-1-4-inch-bit-set-f-01.jpg',
+  'metal-drill-set': 'https://m.media-amazon.com/images/I/71vPF6wJbHL._AC_SL1500_.jpg',
+  'tile-drill': 'https://kent.ca/media/catalog/product/1/2/1230094_3.jpg?bg-color=255%2C255%2C255&fit=bounds&quality=80',
+  'drywall-screw': 'https://www.citymill.com/site/product-images/955838_01.jpg',
+  'drywall-joint-tape': 'https://i5.walmartimages.com/seo/Duck-Drywall-All-Purpose-Non-adhesive-Joint-Paper-Tape-2-06-in-x-75-ft-White_7345b6a7-f17d-4c94-8e80-d26efcaf87b3.9f83a94641008717b6cbb17dd8ce015f.jpeg',
+  'masking-tape': 'https://media.gettyimages.com/id/157482870/photo/masking-tape.jpg?s=2048x2048&w=gi&k=20',
+  'paint-roller': 'https://lawazim.com/cdn/shop/files/K11734P5.jpg?v=1758803856',
+  'paint-tray': 'https://coral-tools.com/cdn/shop/products/5053521733020.PT01_2560x.jpg?v=1610134712',
+  'wide-spatula': 'https://image.hagebau.de/pdp_detail_desktop/flaechenspachtel-stahl-geeignet-fuer-glatte-oberflaechen--1000000000080861.JPG',
+  'cover-film': 'https://pisces.bbystatic.com/image2/BestBuy_US/images/products/6ecb8b2d-6a44-451c-8e9e-b93fd3ef6935.jpg',
+  'abrasive-paper': 'https://eshop.barvyplus.cz/_obchody/barvy-laky.obchodak.net/prilohy/4/902060064_0.jpg.big.jpg',
+  'drywall-rasp': 'https://www.thamesbuildingsupplies.co.uk/media/catalog/product/o/x/ox-p531010.jpg',
+  'drywall-plane': 'https://media.cdn.bauhaus/m/762593/prod_large_square.jpg',
+  'sanding-mesh': 'https://media.toolstation.com/images/141020-UK/800/70587.jpg',
+  'metal-stud-cw': 'https://data.bitpromet.hr/bitftp1/_SHOP/files/products/profil%20CW%20bit%20promet.jpg',
+  'metal-track-uw': 'https://bilder.obi.hu/df789bfd-f3a2-4e39-8f77-4f363b24f6b3/prZZH/250528_2330_uwprofil_SL.jpg',
+  'laser-level': 'https://media.gettyimages.com/id/1256963833/photo/red-laser-level-on-white-background.jpg?s=2048x2048&w=gi&k=20',
+  'tape-measure': 'https://media.gettyimages.com/id/157643839/photo/tape-measure.jpg?s=2048x2048&w=gi&k=20',
+  'spirit-level': 'https://media.gettyimages.com/id/1173791088/photo/yellow-level-tool-isolated-on-white.jpg?s=2048x2048&w=gi&k=20',
+  'stud-detector': 'https://images.toolbuy.com/resources/images/productzoom/product120725044114AMut387c-v1.jpg',
+  'voltage-tester': 'https://www.elektrototaalmarkt.nl/media/catalog/product/cache/2d67d3e1381b49e761e0f840f83667f9/f/l/fluke-two-pole-spanningzoeker-4162512.jpg',
+  'terminal-block': 'https://en.feide.cc/images/product/2024091909440027_1.jpg',
+  'corrugated-conduit': 'https://www.arckelectrical.com.au/cdn/shop/files/f5c8d6c1-511f-48fe-8b0d-dc779c197af7_rollo-de-tubo-tigreflex-16mm-25mtsconelectric-D_NQ_NP_752587-MLC26900990374_022018-F.jpg?v=1764587370',
+  'cable-clips': 'https://www.mkm.com/media/catalog/product/cache/68a6a07be11f9204e13e293d13f6f4b8/b/0/b037206_01.jpg',
+  'pipe-cutter-pex': 'https://m.media-amazon.com/images/I/71Kc4ZtNqHL._AC_SL1500_.jpg',
+  'adjustable-wrench': 'https://media.gettyimages.com/id/813817974/photo/adjustable-wrench-isolated-on-white-background.jpg?s=2048x2048&w=gi&k=20',
+  'ptfe-tape': 'https://equip2clean.co.uk/cdn/shop/files/Copilot_20251028_145107.png?v=1761663100',
+  'sanitary-silicone': 'https://www.kitxpert.nl/media/catalog/product/cache/68781f5d6b073f18061d9a37ea2ee7be/i/l/illbruck-fa201-sanitairkit-siliconen-310ml-kitxper_hmflerlbo2x19smt.png',
+  'tile-cutter-manual': 'https://images.thdstatic.com/productImages/95f02a62-3500-42f1-9c49-f99b2a8f8e0d/svn/vevor-tile-cutters-czqgj600mmsdsgl05v0-64_600.jpg',
+  'notched-trowel': 'https://greybrick.com.au/cdn/shop/files/OXTradeNotchedTilingTrowelGreyBrick.png?v=1730336349',
+  'tile-leveling-system': 'https://image.made-in-china.com/202f0j00JgRGNindymcr/Free-Sample-Factory-Direct-Plastic-Tile-Leveling-System-Clips.jpg',
+  'tile-spacers': 'https://i5.walmartimages.com/asr/2e6ed041-a253-4b58-b3b9-55e590aa79a0.5e10b06d264167f4fbe2f5c7e16bce20.jpeg',
+  'grout-float': 'https://m.media-amazon.com/images/I/61oNo2O0UaL._AC_SL1500_.jpg',
+  'mixing-paddle': 'https://cdn11.bigcommerce.com/s-pc9p7j7z/images/stencil/1280x1280/products/514/1760/24_inch_Mixing_Paddle__56877.1558559246.jpg',
+  'mixing-bucket': 'https://www.baltopttorg.ru/upload/16478.jpg',
+  'floor-spacers': 'https://i8.amplience.net/i/flooranddecor/101002871_goldblatt-pro-laminate-spacers---100pk_1?fmt=auto&qlt=85',
+  'laminate-install-kit': 'https://mobileimages.lowes.com/productimages/94b3b3bb-2846-49f2-b44d-6741d68a8075/71273493.jpg',
+  'jigsaw': 'https://uk.ryobitools.eu/globalassets/catalogue/products/power-tools/sawing/jigsaws/rjs720/rjs720-g_1.jpg',
+  'jigsaw-blade-laminate': 'https://www.zoro.com/static/cms/product/large/Z1xv_zlcpEx_.JPG',
+  'angle-grinder': 'https://imgix.obi.de/api/disc/cms/public/dam/PL-ASSETS/porady-i-inspiracje/encyklopedia-narzedzi/narzedzia-elektryczne/szlifierka-katowa/OBIenc03014-1-min.jpg',
+  'diamond-disc-tile': 'https://m.media-amazon.com/images/I/81v4cMJpOmL._AC_SL1500_.jpg',
+  'respirator-p2': 'https://media.gettyimages.com/id/939788366/photo/safety-mask-for-dust-protection.jpg?s=2048x2048&w=gi&k=20',
+  'hearing-protection': 'https://m.media-amazon.com/images/I/71XAnwV+3PL._AC_SL1500_.jpg',
+  'work-gloves': 'https://media.gettyimages.com/id/180718964/photo/leather-work-glove.jpg?s=2048x2048&w=gi&k=20',
+}
+
+DOM_SUPPLIES.forEach((item) => {
+  if (VERIFIED_SUPPLY_IMAGES[item.id]) {
+    item.image = VERIFIED_SUPPLY_IMAGES[item.id]
+    item.imageVerified = true
+  } else {
+    item.imageVerified = false
+  }
+})
+
 export const DOM_SUPPLY_BY_ID = Object.fromEntries(DOM_SUPPLIES.map((item) => [item.id, item]))
 export const DOM_SUPPLY_CATEGORIES = [
   ['all', 'Все'],
