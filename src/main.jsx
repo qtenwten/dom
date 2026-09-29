@@ -726,6 +726,19 @@ function App() {
   }, [])
 
   useEffect(() => {
+    const media = window.matchMedia('(display-mode: standalone)')
+    const syncDisplayMode = () => {
+      const standalone = media.matches || window.navigator.standalone === true
+      document.documentElement.classList.toggle('is-standalone', standalone)
+      document.documentElement.dataset.displayMode = standalone ? 'standalone' : 'browser'
+    }
+
+    syncDisplayMode()
+    media.addEventListener?.('change', syncDisplayMode)
+    return () => media.removeEventListener?.('change', syncDisplayMode)
+  }, [])
+
+  useEffect(() => {
     const guide = route.view === 'guide' ? DOM_GUIDE_BY_ID[route.id] : null
     const titles = { home: 'Дом — ремонт и строительство', catalog: 'Разделы — Дом', search: 'Поиск — Дом', calculator: 'Калькуляторы — Дом', saved: 'Сохранённое — Дом', project: 'Мой проект — Дом' }
     document.title = guide ? `${guide.title} — Дом` : (titles[route.view] || 'Дом — ремонт и строительство')
