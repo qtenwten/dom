@@ -426,34 +426,85 @@ function openingLine(room, side, opening) {
   return { x1: x + room.width, y1: y + opening.offset, x2: x + room.width, y2: y + opening.offset + opening.width }
 }
 
-function FloorPlan2D({ project, selected, setSelected, onDragRoom }) {
+function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom }) {
   const svgRef = useRef(null)
   const dragRef = useRef(null)
+  const resizeRef = useRef(null)
+
+  const viewBox = useMemo(() => {
+    const xs = []
+    const ys = []
+    project.rooms.forEach((room) => { xs.push(room.x, room.x + room.width); ys.push(room.y, room.y + room.depth) })
+    project.freeWalls.forEach((wall) => { xs.push(wall.x1, wall.x2); ys.push(wall.y1, wall.y2) })
+    if (!xs.length) return { x: 0, y: 0, width: 1400, height: 900 }
+    const pad = 120
+    const minX = Math.min(...xs) - pad
+    const maxX = Math.max(...xs) + pad
+    const minY = Math.min(...ys) - pad
+    const maxY = Math.max(...ys) + pad
+    let width = Math.max(1000, maxX - minX)
+    let height = Math.max(650, maxY - minY)
+    const aspect = 14 / 9
+    if (width / height > aspect) height = width / aspect
+    else width = height * aspect
+    const centerX = (minX + maxX) / 2
+    const centerY = (minY + maxY) / 2
+    return { x: centerX - width / 2, y: centerY - height / 2, width, height }
+  }, [project.rooms, project.freeWalls])
+
+  const pointFromEvent = (event) => {
+    const svg = svgRef.current
+    if (!svg) return { x: 0, y: 0 }
+    const rect = svg.getBoundingClientRect()
+    const box = svg.viewBox.baseVal
+    return {
+      x: box.x + (event.clientX - rect.left) * box.width / rect.width,
+      y: box.y + (event.clientY - rect.top) * box.height / rect.height,
+    }
+  }
 
   const startDrag = (event, room) => {
     if (event.button !== 0) return
-    const svg = svgRef.current
-    if (!svg) return
-    const rect = svg.getBoundingClientRect()
-    const px = (event.clientX - rect.left) * 1400 / rect.width
-    const py = (event.clientY - rect.top) * 900 / rect.height
-    dragRef.current = { id: room.id, dx: px - room.x, dy: py - room.y }
+    const point = pointFromEvent(event)
+    dragRef.current = { id: room.id, dx: point.x - room.x, dy: point.y - room.y }
     event.currentTarget.setPointerCapture?.(event.pointerId)
     setSelected({ type: 'room', id: room.id, side: selected.id === room.id ? selected.side : 'north' })
   }
-  const moveDrag = (event) => {
+
+  const startResize = (event, room) => {
+    event.stopPropagation()
+    const point = pointFromEvent(event)
+    resizeRef.current = { id: room.id, startX: point.x, startY: point.y, width: room.width, depth: room.depth }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    setSelected({ type: 'room', id: room.id, side: selected.id === room.id ? selected.side : 'north' })
+  }
+
+  const movePointer = (event) => {
+    if (resizeRef.current) {
+      const point = pointFromEvent(event)
+      const resize = resizeRef.current
+      const width = clamp(snap(resize.width + point.x - resize.startX, project.grid), 50, 5000)
+      const depth = clamp(snap(resize.depth + point.y - resize.startY, project.grid), 50, 5000)
+      onResizeRoom(resize.id, width, depth, false)
+      return
+    }
+    if (!dragRef.current) return
+    const point = pointFromEvent(event)
     const drag = dragRef.current
-    const svg = svgRef.current
-    if (!drag || !svg) return
-    const rect = svg.getBoundingClientRect()
-    const px = (event.clientX - rect.left) * 1400 / rect.width
-    const py = (event.clientY - rect.top) * 900 / rect.height
-    onDragRoom(drag.id, snap(px - drag.dx, project.grid), snap(py - drag.dy, project.grid), false)
+    onDragRoom(drag.id, snap(point.x - drag.dx, project.grid), snap(point.y - drag.dy, project.grid), false)
   }
-  const endDrag = () => {
-    if (dragRef.current) onDragRoom(dragRef.current.id, null, null, true)
-    dragRef.current = null
+
+  const endPointer = () => {
+    if (resizeRef.current) {
+      onResizeRoom(resizeRef.current.id, null, null, true)
+      resizeRef.current = null
+    }
+    if (dragRef.current) {
+      onDragRoom(dragRef.current.id, null, null, true)
+      dragRef.current = null
+    }
   }
+
   const floorPattern = (finish) => ({
     laminate: 'planner-floor-laminate',
     parquet: 'planner-floor-parquet',
@@ -499,7 +550,36 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom }) {
     </g>
   }
 
-  return <svg ref={svgRef} className="planner-svg" viewBox="0 0 1400 900" role="img" aria-label="Редактируемый архитектурный план квартиры" onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
+  const freeOpeningGlyph = (wall, opening) => {
+    const total = wallLengthFree(wall)
+    if (!total) return null
+    const ux = (wall.x2 - wall.x1) / total
+    const uy = (wall.y2 - wall.y1) / total
+    const nx = -uy
+    const ny = ux
+    const start = clamp(opening.offset, 0, total)
+    const end = clamp(opening.offset + opening.width, start, total)
+    const x1 = wall.x1 + ux * start
+    const y1 = wall.y1 + uy * start
+    const x2 = wall.x1 + ux * end
+    const y2 = wall.y1 + uy * end
+    if (opening.type === 'window') {
+      return <g key={opening.id} className="plan-window">
+        <line className="plan-opening-cut" x1={x1} y1={y1} x2={x2} y2={y2} />
+        <line x1={x1 + nx * 4} y1={y1 + ny * 4} x2={x2 + nx * 4} y2={y2 + ny * 4} />
+        <line x1={x1 - nx * 4} y1={y1 - ny * 4} x2={x2 - nx * 4} y2={y2 - ny * 4} />
+      </g>
+    }
+    const leafX = x1 + nx * opening.width
+    const leafY = y1 + ny * opening.width
+    return <g key={opening.id} className="plan-door">
+      <line className="plan-opening-cut" x1={x1} y1={y1} x2={x2} y2={y2} />
+      <line className="plan-door-leaf" x1={x1} y1={y1} x2={leafX} y2={leafY} />
+      <path className="plan-door-swing" d={'M ' + x2 + ' ' + y2 + ' A ' + opening.width + ' ' + opening.width + ' 0 0 1 ' + leafX + ' ' + leafY} />
+    </g>
+  }
+
+  return <svg ref={svgRef} className="planner-svg" viewBox={viewBox.x + ' ' + viewBox.y + ' ' + viewBox.width + ' ' + viewBox.height} role="img" aria-label="Редактируемый архитектурный план квартиры" onPointerMove={movePointer} onPointerUp={endPointer} onPointerCancel={endPointer}>
     <defs>
       <pattern id="planner-grid-small" width={project.grid} height={project.grid} patternUnits="userSpaceOnUse"><path d={'M ' + project.grid + ' 0 L 0 0 0 ' + project.grid} fill="none" className="grid-small" /></pattern>
       <pattern id="planner-grid-large" width={project.grid * 5} height={project.grid * 5} patternUnits="userSpaceOnUse"><rect width={project.grid * 5} height={project.grid * 5} fill="url(#planner-grid-small)" /><path d={'M ' + project.grid * 5 + ' 0 L 0 0 0 ' + project.grid * 5} fill="none" className="grid-large" /></pattern>
@@ -511,7 +591,7 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom }) {
       <pattern id="planner-floor-neutral" width="32" height="32" patternUnits="userSpaceOnUse"><rect width="32" height="32" fill="#ece8df" /></pattern>
       <filter id="planner-room-shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="6" stdDeviation="5" floodColor="#111410" floodOpacity=".08" /></filter>
     </defs>
-    <rect width="1400" height="900" className="planner-paper" fill="url(#planner-grid-large)" />
+    <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} className="planner-paper" fill="url(#planner-grid-large)" />
     {project.rooms.map((room) => {
       const active = selected.type === 'room' && selected.id === room.id
       const walls = {
@@ -544,6 +624,10 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom }) {
             {wall.openings.map((opening) => openingGlyph(room, side, opening))}
           </g>
         })}
+        {active && <g className="plan-resize-handle" onPointerDown={(event) => startResize(event, room)} transform={'translate(' + (room.x + room.width) + ' ' + (room.y + room.depth) + ')'}>
+          <circle r="15" />
+          <path d="M-6 0H6M0-6V6" />
+        </g>}
       </g>
     })}
     {project.freeWalls.map((wall) => {
@@ -551,6 +635,7 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom }) {
       return <g key={wall.id} onPointerDown={(e) => { e.stopPropagation(); setSelected({ type: 'wall', id: wall.id }) }}>
         <line className={'free-wall-hit ' + (active ? 'active' : '')} x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2} />
         <line className={'free-wall-line ' + (active ? 'active' : '')} style={{ strokeWidth: wallStroke(wall) }} x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2} pointerEvents="none" />
+        {wall.openings.map((opening) => freeOpeningGlyph(wall, opening))}
         <text className="plan-dimension" x={(wall.x1 + wall.x2) / 2} y={(wall.y1 + wall.y2) / 2 - 15} textAnchor="middle">{(wallLengthFree(wall) / 100).toFixed(2)} м</text>
       </g>
     })}
@@ -561,63 +646,100 @@ function FloorPlan3D({ project, selected, setSelected, angle }) {
   const mountRef = useRef(null)
   const stateRef = useRef(null)
 
+  const setCameraPreset = (preset) => {
+    const state = stateRef.current
+    if (!state) return
+    const radius = state.radius || 8
+    const height = state.maxHeight || 2.7
+    state.controls.target.set(0, Math.min(1.3, height * .42), 0)
+    if (preset === 'top') {
+      state.camera.position.set(.001, Math.max(radius * 1.75, height + 5), .001)
+    } else if (preset === 'front') {
+      state.camera.position.set(0, Math.max(2.4, height * .75), radius * 1.55)
+    } else {
+      const rad = -38 * Math.PI / 180
+      state.camera.position.set(Math.sin(rad) * radius * 1.35, Math.max(5.2, radius * .82), Math.cos(rad) * radius * 1.35)
+    }
+    state.camera.lookAt(state.controls.target)
+    state.controls.update()
+  }
+
+  const capturePng = () => {
+    const state = stateRef.current
+    if (!state) return
+    state.renderer.render(state.scene, state.camera)
+    state.renderer.domElement.toBlob((blob) => {
+      if (!blob) return
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = (project.name || 'dom-project').replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-|-$/g, '') + '-3d.png'
+      anchor.click()
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+    }, 'image/png')
+  }
+
   useEffect(() => {
     const host = mountRef.current
     if (!host) return undefined
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0xe7e3d9)
-    scene.fog = new THREE.Fog(0xe7e3d9, 18, 34)
+    scene.background = new THREE.Color(0xe9e5dc)
+    scene.fog = new THREE.Fog(0xe9e5dc, 20, 42)
 
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 100)
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 120)
     camera.position.set(8.5, 8, 10.5)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.05
+    renderer.toneMappingExposure = 1.08
     host.appendChild(renderer.domElement)
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = .075
     controls.target.set(0, 1.1, 0)
-    controls.minDistance = 3.5
-    controls.maxDistance = 28
-    controls.maxPolarAngle = Math.PI * .48
+    controls.minDistance = 2.8
+    controls.maxDistance = 34
+    controls.maxPolarAngle = Math.PI * .495
+    controls.screenSpacePanning = true
 
-    scene.add(new THREE.HemisphereLight(0xfffbef, 0x646b63, 2.1))
-    const sun = new THREE.DirectionalLight(0xfff4dd, 3.4)
-    sun.position.set(-8, 13, 7)
+    scene.add(new THREE.HemisphereLight(0xfffbef, 0x626961, 2.25))
+    const sun = new THREE.DirectionalLight(0xfff3d6, 3.8)
+    sun.position.set(-9, 14, 8)
     sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
-    sun.shadow.camera.left = -15
-    sun.shadow.camera.right = 15
-    sun.shadow.camera.top = 15
-    sun.shadow.camera.bottom = -15
+    sun.shadow.camera.left = -18
+    sun.shadow.camera.right = 18
+    sun.shadow.camera.top = 18
+    sun.shadow.camera.bottom = -18
+    sun.shadow.bias = -.00025
     scene.add(sun)
 
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(34, 34),
-      new THREE.MeshStandardMaterial({ color: 0xd8d3c9, roughness: 1, metalness: 0 })
-    )
+    const fill = new THREE.DirectionalLight(0xdce8ef, 1.05)
+    fill.position.set(9, 6, -7)
+    scene.add(fill)
+
+    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0xdad5cb, roughness: 1, metalness: 0 })
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(42, 42), groundMaterial)
     ground.rotation.x = -Math.PI / 2
-    ground.position.y = -.07
+    ground.position.y = -.075
     ground.receiveShadow = true
     scene.add(ground)
 
-    const grid = new THREE.GridHelper(30, 60, 0xbab3a7, 0xcec8bd)
-    grid.position.y = -.055
+    const grid = new THREE.GridHelper(36, 72, 0xb8b1a5, 0xcdc6bb)
+    grid.position.y = -.06
     const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material]
-    gridMaterials.forEach((material) => { material.transparent = true; material.opacity = .32 })
+    gridMaterials.forEach((material) => { material.transparent = true; material.opacity = .28 })
     scene.add(grid)
 
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
-    const state = { scene, camera, renderer, controls, pickables: [], model: null }
+    const state = { scene, camera, renderer, controls, pickables: [], model: null, grid, radius: 8, maxHeight: 2.7, framed: false }
     stateRef.current = state
 
     const resize = () => {
@@ -632,16 +754,40 @@ function FloorPlan3D({ project, selected, setSelected, angle }) {
     const observer = new ResizeObserver(resize)
     observer.observe(host)
 
-    const onPointerDown = (event) => {
+    let down = null
+    const updatePointer = (event) => {
       const rect = renderer.domElement.getBoundingClientRect()
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
-      const hit = raycaster.intersectObjects(state.pickables, false)[0]
+      return raycaster.intersectObjects(state.pickables, false)[0]
+    }
+    const onPointerDown = (event) => {
+      down = { x: event.clientX, y: event.clientY }
+    }
+    const onPointerMove = (event) => {
+      if (down && Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5) {
+        renderer.domElement.style.cursor = 'grabbing'
+        return
+      }
+      const hit = updatePointer(event)
+      renderer.domElement.style.cursor = hit ? 'pointer' : 'grab'
+    }
+    const onPointerUp = (event) => {
+      if (!down) return
+      const moved = Math.hypot(event.clientX - down.x, event.clientY - down.y)
+      down = null
+      renderer.domElement.style.cursor = 'grab'
+      if (moved > 5) return
+      const hit = updatePointer(event)
       const selection = hit?.object?.userData?.selection
       if (selection) setSelected(selection)
     }
+    const onPointerCancel = () => { down = null }
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
+    renderer.domElement.addEventListener('pointermove', onPointerMove)
+    renderer.domElement.addEventListener('pointerup', onPointerUp)
+    renderer.domElement.addEventListener('pointercancel', onPointerCancel)
 
     let frame = 0
     const draw = () => {
@@ -655,16 +801,21 @@ function FloorPlan3D({ project, selected, setSelected, angle }) {
       cancelAnimationFrame(frame)
       observer.disconnect()
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
+      renderer.domElement.removeEventListener('pointermove', onPointerMove)
+      renderer.domElement.removeEventListener('pointerup', onPointerUp)
+      renderer.domElement.removeEventListener('pointercancel', onPointerCancel)
       controls.dispose()
       if (state.model) {
         state.model.traverse((object) => {
           object.geometry?.dispose?.()
           if (Array.isArray(object.material)) object.material.forEach((m) => m.dispose?.())
           else object.material?.dispose?.()
+          object.material?.map?.dispose?.()
         })
       }
+      gridMaterials.forEach((material) => material.dispose?.())
       ground.geometry.dispose()
-      ground.material.dispose()
+      groundMaterial.dispose()
       renderer.dispose()
       renderer.domElement.remove()
       stateRef.current = null
@@ -681,6 +832,7 @@ function FloorPlan3D({ project, selected, setSelected, angle }) {
         object.geometry?.dispose?.()
         if (Array.isArray(object.material)) object.material.forEach((m) => m.dispose?.())
         else object.material?.dispose?.()
+        object.material?.map?.dispose?.()
       })
     }
 
@@ -694,130 +846,254 @@ function FloorPlan3D({ project, selected, setSelected, angle }) {
       y: ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 0,
     }
     const floorColors = {
-      laminate: 0xcdbb99,
-      tile: 0xc9d2cf,
-      vinyl: 0xbeb7aa,
-      parquet: 0xc8a979,
-      screed: 0xb8b8b3,
+      laminate: 0xcfbd9a,
+      tile: 0xc9d3d0,
+      vinyl: 0xbeb8ab,
+      parquet: 0xc6a777,
+      screed: 0xb9b9b4,
     }
-    const makeMaterial = (color, selectedPart = false) => new THREE.MeshStandardMaterial({
-      color: selectedPart ? 0xc99338 : color,
-      roughness: selectedPart ? .62 : .82,
+    const wallColors = {
+      existing: 0xf1eee6,
+      concrete: 0xbdbdb8,
+      brick: 0xc9a68e,
+      block: 0xd8d6c9,
+      drywall: 0xf5f2e9,
+    }
+    const finishTint = {
+      'plaster-paint': 0xffffff,
+      tile: 0xe9f0ee,
+      wallpaper: 0xf0e8d9,
+      panels: 0xe4d5bf,
+      none: 0xd6d2c9,
+    }
+    const blendHex = (a, b, t = .22) => {
+      const ca = new THREE.Color(a)
+      ca.lerp(new THREE.Color(b), t)
+      return ca
+    }
+    const makeWallMaterial = (wall, selectedPart = false) => new THREE.MeshStandardMaterial({
+      color: selectedPart ? 0xc89036 : blendHex(wallColors[wall.material] || 0xeeeae1, finishTint[wall.finish] || 0xffffff, .18),
+      roughness: wall.finish === 'tile' ? .48 : wall.material === 'concrete' ? .94 : .8,
       metalness: 0,
     })
-    const addMesh = (geometry, material, position, rotationY, selection, parent = model) => {
+    const makeFloorMaterial = (finish, active) => new THREE.MeshStandardMaterial({
+      color: active ? 0xc99a49 : (floorColors[finish] || 0xd7d0c2),
+      roughness: finish === 'tile' ? .5 : .78,
+      metalness: 0,
+    })
+    const frameMaterial = new THREE.MeshStandardMaterial({ color: 0xe9e5dc, roughness: .58, metalness: .08 })
+    const doorMaterial = new THREE.MeshStandardMaterial({ color: 0xa98967, roughness: .72, metalness: 0 })
+    const glassMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0x9fc5d0,
+      transparent: true,
+      opacity: .30,
+      roughness: .12,
+      metalness: 0,
+      transmission: .42,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+
+    state.pickables = []
+
+    const addMesh = (geometry, material, position, rotationY, selection, parent = model, pickable = true) => {
       const mesh = new THREE.Mesh(geometry, material)
       mesh.position.set(position.x, position.y, position.z)
       if (rotationY) mesh.rotation.y = rotationY
-      mesh.castShadow = true
+      mesh.castShadow = material !== glassMaterial
       mesh.receiveShadow = true
-      mesh.userData.selection = selection
+      if (selection) mesh.userData.selection = selection
       parent.add(mesh)
-      state.pickables.push(mesh)
+      if (selection && pickable) state.pickables.push(mesh)
       return mesh
     }
 
-    const addWallSegment = (room, side, wall, start, end, bottom, top) => {
+    const wallCoordsForRoom = (room, side) => {
+      if (side === 'north') return { x1: room.x, y1: room.y, x2: room.x + room.width, y2: room.y }
+      if (side === 'south') return { x1: room.x, y1: room.y + room.depth, x2: room.x + room.width, y2: room.y + room.depth }
+      if (side === 'west') return { x1: room.x, y1: room.y, x2: room.x, y2: room.y + room.depth }
+      return { x1: room.x + room.width, y1: room.y, x2: room.x + room.width, y2: room.y + room.depth }
+    }
+
+    const addSegment = (coords, thicknessMm, material, selection, start, end, bottom, top) => {
       if (end <= start || top <= bottom) return
-      const thickness = Math.max(.06, (wall.thickness || 120) / 1000)
+      const dx = coords.x2 - coords.x1
+      const dy = coords.y2 - coords.y1
+      const total = Math.hypot(dx, dy)
+      if (!total) return
+      const ux = dx / total
+      const uy = dy / total
+      const mid = (start + end) / 2
+      const x = (coords.x1 + ux * mid - center.x) / 100
+      const z = (coords.y1 + uy * mid - center.y) / 100
+      const length = (end - start) / 100
       const height = (top - bottom) / 100
-      const selectedWall = selected.type === 'room' && selected.id === room.id && selected.side === side
-      const material = makeMaterial(0xf2efe6, selectedWall)
-      const selection = { type: 'room', id: room.id, side }
-      if (side === 'north' || side === 'south') {
-        const length = (end - start) / 100
-        const x = (room.x + (start + end) / 2 - center.x) / 100
-        const z = ((side === 'north' ? room.y : room.y + room.depth) - center.y) / 100
-        addMesh(new THREE.BoxGeometry(length, height, thickness), material, { x, y: (bottom + top) / 200, z }, 0, selection)
-      } else {
-        const length = (end - start) / 100
-        const x = ((side === 'west' ? room.x : room.x + room.width) - center.x) / 100
-        const z = (room.y + (start + end) / 2 - center.y) / 100
-        addMesh(new THREE.BoxGeometry(thickness, height, length), material, { x, y: (bottom + top) / 200, z }, 0, selection)
+      const thickness = Math.max(.04, (thicknessMm || 120) / 1000)
+      addMesh(
+        new THREE.BoxGeometry(length, height, thickness),
+        material,
+        { x, y: (bottom + top) / 200, z },
+        -Math.atan2(dy, dx),
+        selection
+      )
+    }
+
+    const addOpeningFixture = (coords, wall, opening, selection) => {
+      const dx = coords.x2 - coords.x1
+      const dy = coords.y2 - coords.y1
+      const total = Math.hypot(dx, dy)
+      if (!total) return
+      const ux = dx / total
+      const uy = dy / total
+      const width = clamp(opening.width, 1, total) / 100
+      const height = clamp(opening.height, 1, 1000) / 100
+      const sill = opening.type === 'door' ? 0 : clamp(opening.sill, 0, 1000) / 100
+      const offset = clamp(opening.offset, 0, total) + clamp(opening.width, 1, total) / 2
+      const group = new THREE.Group()
+      group.position.set(
+        (coords.x1 + ux * offset - center.x) / 100,
+        sill,
+        (coords.y1 + uy * offset - center.y) / 100
+      )
+      group.rotation.y = -Math.atan2(dy, dx)
+      model.add(group)
+
+      const frame = .045
+      const depth = Math.max(.045, (wall.thickness || 120) / 1000 + .012)
+      const verticalHeight = height
+      const makePart = (geometry, material, x, y, z, pickable = false) => {
+        const mesh = new THREE.Mesh(geometry, material)
+        mesh.position.set(x, y, z)
+        mesh.castShadow = material !== glassMaterial
+        mesh.receiveShadow = true
+        if (selection) mesh.userData.selection = selection
+        group.add(mesh)
+        if (selection && pickable) state.pickables.push(mesh)
+        return mesh
       }
+      makePart(new THREE.BoxGeometry(frame, verticalHeight, depth), frameMaterial, -width / 2 + frame / 2, verticalHeight / 2, 0, true)
+      makePart(new THREE.BoxGeometry(frame, verticalHeight, depth), frameMaterial, width / 2 - frame / 2, verticalHeight / 2, 0, true)
+      makePart(new THREE.BoxGeometry(width, frame, depth), frameMaterial, 0, verticalHeight - frame / 2, 0, true)
+      if (opening.type === 'window') {
+        makePart(new THREE.BoxGeometry(width, frame, depth), frameMaterial, 0, frame / 2, 0, true)
+        makePart(new THREE.BoxGeometry(Math.max(.04, width - frame * 2), Math.max(.04, verticalHeight - frame * 2), .018), glassMaterial, 0, verticalHeight / 2, 0, true)
+        if (width > 1.2) makePart(new THREE.BoxGeometry(frame * .72, Math.max(.04, verticalHeight - frame * 2), depth * .75), frameMaterial, 0, verticalHeight / 2, 0)
+      } else {
+        const pivot = new THREE.Group()
+        pivot.position.set(-width / 2 + frame, 0, depth * .55)
+        pivot.rotation.y = -Math.PI / 9
+        group.add(pivot)
+        const leaf = new THREE.Mesh(new THREE.BoxGeometry(Math.max(.05, width - frame * 2), Math.max(.05, verticalHeight - frame * 1.8), .035), doorMaterial)
+        leaf.position.set((width - frame * 2) / 2, verticalHeight / 2, 0)
+        leaf.castShadow = true
+        leaf.receiveShadow = true
+        leaf.userData.selection = selection
+        pivot.add(leaf)
+        state.pickables.push(leaf)
+      }
+    }
+
+    const buildWallWithOpenings = (coords, wall, wallHeight, selection, selectedPart) => {
+      const total = Math.hypot(coords.x2 - coords.x1, coords.y2 - coords.y1)
+      const material = makeWallMaterial(wall, selectedPart)
+      const openings = [...wall.openings]
+        .map((opening) => ({
+          ...opening,
+          offset: clamp(opening.offset, 0, total),
+          width: clamp(opening.width, 1, total),
+          height: clamp(opening.height, 1, wallHeight),
+          sill: clamp(opening.sill, 0, wallHeight),
+        }))
+        .sort((a, b) => a.offset - b.offset)
+      let cursor = 0
+      openings.forEach((opening) => {
+        const start = clamp(opening.offset, 0, total)
+        const end = clamp(opening.offset + opening.width, start, total)
+        addSegment(coords, wall.thickness, material, selection, cursor, start, 0, wallHeight)
+        if (opening.type === 'door') {
+          addSegment(coords, wall.thickness, material, selection, start, end, opening.height, wallHeight)
+        } else {
+          const top = clamp(opening.sill + opening.height, opening.sill, wallHeight)
+          addSegment(coords, wall.thickness, material, selection, start, end, 0, opening.sill)
+          addSegment(coords, wall.thickness, material, selection, start, end, top, wallHeight)
+        }
+        addOpeningFixture(coords, wall, opening, selection)
+        cursor = Math.max(cursor, end)
+      })
+      addSegment(coords, wall.thickness, material, selection, cursor, total, 0, wallHeight)
     }
 
     project.rooms.forEach((room) => {
       const isSelectedRoom = selected.type === 'room' && selected.id === room.id
       addMesh(
-        new THREE.BoxGeometry(room.width / 100, .07, room.depth / 100),
-        makeMaterial(floorColors[room.floorFinish] || 0xd7d0c2, isSelectedRoom),
-        { x: (room.x + room.width / 2 - center.x) / 100, y: -.015, z: (room.y + room.depth / 2 - center.y) / 100 },
+        new THREE.BoxGeometry(room.width / 100, .075, room.depth / 100),
+        makeFloorMaterial(room.floorFinish, isSelectedRoom),
+        { x: (room.x + room.width / 2 - center.x) / 100, y: -.018, z: (room.y + room.depth / 2 - center.y) / 100 },
         0,
         { type: 'room', id: room.id, side: selected.side || 'north' }
       )
-
       SIDES.forEach((side) => {
         const wall = room.walls[side]
-        const length = roomWallLength(room, side)
-        const openings = [...wall.openings]
-          .map((opening) => ({ ...opening, offset: clamp(opening.offset, 0, length), width: clamp(opening.width, 1, length) }))
-          .sort((a, b) => a.offset - b.offset)
-        let cursor = 0
-        openings.forEach((opening) => {
-          const start = clamp(opening.offset, 0, length)
-          const end = clamp(opening.offset + opening.width, start, length)
-          addWallSegment(room, side, wall, cursor, start, 0, room.height)
-          if (opening.type === 'door') {
-            addWallSegment(room, side, wall, start, end, clamp(opening.height, 0, room.height), room.height)
-          } else {
-            const sill = clamp(opening.sill, 0, room.height)
-            const top = clamp(sill + opening.height, sill, room.height)
-            addWallSegment(room, side, wall, start, end, 0, sill)
-            addWallSegment(room, side, wall, start, end, top, room.height)
-          }
-          cursor = Math.max(cursor, end)
-        })
-        addWallSegment(room, side, wall, cursor, length, 0, room.height)
+        const selection = { type: 'room', id: room.id, side }
+        buildWallWithOpenings(wallCoordsForRoom(room, side), wall, room.height, selection, isSelectedRoom && selected.side === side)
       })
     })
 
     project.freeWalls.forEach((wall) => {
       const length = wallLengthFree(wall)
       if (length <= 0) return
-      const thickness = Math.max(.06, (wall.thickness || 100) / 1000)
-      const height = wall.height / 100
-      const dx = wall.x2 - wall.x1
-      const dy = wall.y2 - wall.y1
-      const x = ((wall.x1 + wall.x2) / 2 - center.x) / 100
-      const z = ((wall.y1 + wall.y2) / 2 - center.y) / 100
-      const active = selected.type === 'wall' && selected.id === wall.id
-      addMesh(
-        new THREE.BoxGeometry(length / 100, height, thickness),
-        makeMaterial(0xe8e4db, active),
-        { x, y: height / 2, z },
-        -Math.atan2(dy, dx),
-        { type: 'wall', id: wall.id }
-      )
+      const coords = { x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2 }
+      const selection = { type: 'wall', id: wall.id }
+      buildWallWithOpenings(coords, wall, wall.height, selection, selected.type === 'wall' && selected.id === wall.id)
     })
 
-    state.pickables = []
-    model.traverse((object) => {
-      if (object.isMesh && object.userData.selection) state.pickables.push(object)
-    })
     state.model = model
     scene.add(model)
 
     const spanX = xs.length ? (Math.max(...xs) - Math.min(...xs)) / 100 : 6
     const spanY = ys.length ? (Math.max(...ys) - Math.min(...ys)) / 100 : 6
-    const radius = Math.max(7, Math.max(spanX, spanY) * 1.25)
-    state.controls.maxDistance = Math.max(18, radius * 2.4)
+    const roomHeights = project.rooms.map((room) => room.height / 100)
+    const wallHeights = project.freeWalls.map((wall) => wall.height / 100)
+    const maxHeight = Math.max(2.4, ...roomHeights, ...wallHeights)
+    const radius = Math.max(6.5, Math.max(spanX, spanY) * 1.15, maxHeight * 2.4)
+    state.radius = radius
+    state.maxHeight = maxHeight
+    state.controls.maxDistance = Math.max(20, radius * 2.8)
+    if (!state.framed) {
+      state.framed = true
+      const rad = -38 * Math.PI / 180
+      state.camera.position.set(Math.sin(rad) * radius * 1.35, Math.max(5.2, radius * .82), Math.cos(rad) * radius * 1.35)
+      state.controls.target.set(0, Math.min(1.3, maxHeight * .42), 0)
+      state.camera.lookAt(state.controls.target)
+      state.controls.update()
+    }
   }, [project, selected])
 
   useEffect(() => {
     const state = stateRef.current
     if (!state) return
-    const radius = Math.max(6, Math.hypot(state.camera.position.x, state.camera.position.z))
+    const radius = Math.max(state.radius || 6, Math.hypot(state.camera.position.x, state.camera.position.z))
     const rad = angle * Math.PI / 180
     state.camera.position.x = Math.sin(rad) * radius
     state.camera.position.z = Math.cos(rad) * radius
-    state.camera.position.y = Math.max(5.5, radius * .68)
+    state.camera.position.y = Math.max(5.2, radius * .72)
     state.camera.lookAt(state.controls.target)
     state.controls.update()
   }, [angle])
 
+  const selectedName = selected.type === 'room'
+    ? project.rooms.find((room) => room.id === selected.id)?.name
+    : project.freeWalls.find((wall) => wall.id === selected.id)?.name
+
   return <div className="planner-three" ref={mountRef} role="img" aria-label="Интерактивная 3D модель квартиры">
-    <div className="planner-three__legend"><span>ЛКМ — выбрать</span><span>Drag — вращать</span><span>Колесо — масштаб</span></div>
+    <div className="planner-three__legend"><span>Клик — выбрать</span><span>Drag — вращать</span><span>Колесо — масштаб</span></div>
+    <div className="planner-three__camera">
+      <button type="button" onClick={() => setCameraPreset('iso')}>Изометрия</button>
+      <button type="button" onClick={() => setCameraPreset('top')}>Сверху</button>
+      <button type="button" onClick={() => setCameraPreset('front')}>Фасад</button>
+      <button type="button" onClick={capturePng}>PNG</button>
+    </div>
+    {selectedName && <div className="planner-three__selection"><small>Выбрано</small><strong>{selectedName}</strong>{selected.type === 'room' && selected.side && <span>{SIDE_NAMES[selected.side]} стена</span>}</div>}
   </div>
 }
 
@@ -981,6 +1257,19 @@ export default function PlannerPage() {
     }
   }
 
+  const resizeRoom = (id, width, depth, done) => {
+    if (!done) {
+      if (!dragSnapshot.current) dragSnapshot.current = project
+      setProject((current) => ({ ...current, rooms: current.rooms.map((room) => room.id === id ? { ...room, width: clamp(width, 50, 5000), depth: clamp(depth, 50, 5000) } : room) }))
+      return
+    }
+    if (dragSnapshot.current) {
+      past.current = [...past.current.slice(-39), dragSnapshot.current]
+      future.current = []
+      dragSnapshot.current = null
+    }
+  }
+
   const exportProject = () => {
     const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -1051,10 +1340,10 @@ export default function PlannerPage() {
         <div className="planner-stage-toolbar">
           <div className="view-switch"><button type="button" className={view === '2d' ? 'active' : ''} onClick={() => setView('2d')}>2D план</button><button type="button" className={view === '3d' ? 'active' : ''} onClick={() => setView('3d')}>3D вид</button></div>
           {view === '3d' && <div className="angle-control"><button type="button" onClick={() => setAngle((a) => a - 15)}>↶</button><span>{angle}°</span><button type="button" onClick={() => setAngle((a) => a + 15)}>↷</button></div>}
-          <div className="stage-hint">{view === '2d' ? 'Перетаскивайте помещения. Клик по границе выбирает конкретную стену.' : 'Вращайте модель мышью или пальцем; клик по стене или полу открывает параметры.'}</div>
+          <div className="stage-hint">{view === '2d' ? 'Перетаскивайте помещения; круглый маркер меняет размер. План автоматически вписывается в рабочую область.' : 'Вращайте модель мышью или пальцем; клик по стене или полу открывает параметры.'}</div>
         </div>
         <div className="planner-canvas">
-          {view === '2d' ? <FloorPlan2D project={project} selected={selected} setSelected={setSelected} onDragRoom={dragRoom} /> : <FloorPlan3D project={project} selected={selected} setSelected={setSelected} angle={angle} />}
+          {view === '2d' ? <FloorPlan2D project={project} selected={selected} setSelected={setSelected} onDragRoom={dragRoom} onResizeRoom={resizeRoom} /> : <FloorPlan3D project={project} selected={selected} setSelected={setSelected} angle={angle} />}
         </div>
         <div className="planner-scale"><i /><span>100 см</span></div>
       </section>
