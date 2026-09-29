@@ -22,7 +22,22 @@ const IMAGES = {
   room: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=1200&q=85',
 }
 
-const CATEGORY_ART = [IMAGES.drywall, IMAGES.wood, IMAGES.room, IMAGES.electrical, IMAGES.bathroom, IMAGES.kitchen, IMAGES.tools, IMAGES.apartment]
+const CATEGORY_IMAGE_BY_ID = {
+  construction: IMAGES.hero,
+  drywall: IMAGES.drywall,
+  ceilings: IMAGES.room,
+  floors: IMAGES.wood,
+  electrics: IMAGES.electrical,
+  plumbing: IMAGES.bathroom,
+  heating: IMAGES.room,
+  ventilation: IMAGES.tools,
+  'windows-doors': IMAGES.apartment,
+  finishing: IMAGES.kitchen,
+  roof: IMAGES.hero,
+  site: IMAGES.apartment,
+}
+
+const CATEGORY_ART = DOM_CATEGORIES.map((category) => CATEGORY_IMAGE_BY_ID[category.id] || IMAGES.tools)
 
 const NavigationContext = createContext(null)
 
@@ -305,9 +320,9 @@ function Hero({ query, setQuery }) {
         </div>
       </TiltCard>
       <div className="hero-stats">
-        <div><strong>500+</strong><span>инструкций</span></div>
-        <div><strong>50+</strong><span>калькуляторов</span></div>
-        <div><strong>10 000+</strong><span>товаров</span></div>
+        <div><strong>{DOM_GUIDES.length}</strong><span>инструкций</span></div>
+        <div><strong>{DOM_CATEGORIES.length}</strong><span>главных разделов</span></div>
+        <div><strong>1</strong><span>калькулятор</span></div>
         <div><strong>∞</strong><span>идей для дома</span></div>
       </div>
     </section>
@@ -335,25 +350,25 @@ function QuickTools() {
 }
 
 function PopularSections() {
-  const fallback = [
-    { title: 'Квартира', description: 'Ремонт под ключ' },
-    { title: 'Ванная', description: 'Гидроизоляция, плитка' },
-    { title: 'Кухня', description: 'Планировка, мебель' },
-    { title: 'Электрика', description: 'Схемы, безопасность' },
-    { title: 'Сантехника', description: 'Монтаж и обслуживание' },
-    { title: 'Потолки', description: 'ГКЛ, освещение' },
-  ]
-  const imgs = [IMAGES.apartment, IMAGES.bathroom, IMAGES.kitchen, IMAGES.electrical, IMAGES.room, IMAGES.drywall]
+  const popularIds = ['construction', 'drywall', 'ceilings', 'floors', 'electrics', 'plumbing']
+  const popular = popularIds
+    .map((id) => DOM_CATEGORY_BY_ID[id])
+    .filter(Boolean)
+    .map((category) => ({
+      ...category,
+      count: DOM_GUIDES.filter((guide) => guide.category === category.id).length,
+    }))
+
   return (
     <section className="content-section popular-section" data-reveal>
       <div className="section-title-row"><div><span className="overline">Навигация по задачам</span><h2>Популярные разделы</h2></div><Link href="#/catalog">Смотреть все <Icon name="arrow" size={16} /></Link></div>
       <div className="popular-scroll">
-        {fallback.map((item, i) => (
-          <TiltCard className="popular-card" key={item.title}>
-            <Link href={i === 3 ? '#/category/drywall' : '#/catalog'}>
-              <img src={imgs[i]} alt="" loading="lazy" />
+        {popular.map((item) => (
+          <TiltCard className="popular-card" key={item.id}>
+            <Link href={`#/category/${item.id}`}>
+              <img src={CATEGORY_IMAGE_BY_ID[item.id] || IMAGES.tools} alt="" loading="lazy" />
               <span className="popular-card__overlay" />
-              <div><strong>{item.title}</strong><small>{item.description}</small></div>
+              <div><strong>{item.title}</strong><small>{item.count} инструкций</small></div>
               <b><Icon name="arrow" size={16} /></b>
             </Link>
           </TiltCard>
@@ -517,7 +532,7 @@ function GuidePage({ id }) {
   const [activeStep, setActiveStep] = useState(0)
   if (!guide) return <NotFound />
   const category = DOM_CATEGORY_BY_ID[guide.category]
-  const heroImage = id.includes('socket') ? IMAGES.electrical : id.includes('door') ? IMAGES.wood : IMAGES.drywall
+  const heroImage = CATEGORY_IMAGE_BY_ID[guide.category] || (id.includes('socket') ? IMAGES.electrical : id.includes('door') ? IMAGES.wood : IMAGES.drywall)
   return (
     <main className="page guide-page">
       <div className="guide-breadcrumb"><Link href="#/home">Главная</Link><span>›</span><Link href={`#/category/${guide.category}`}>{category?.title || 'Раздел'}</Link><span>›</span><b>{guide.title}</b></div>
