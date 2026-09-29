@@ -19,9 +19,9 @@ for (const file of ['content.js', 'sw.js']) {
 }
 
 const manifest = JSON.parse(await readFile('manifest.webmanifest', 'utf8'))
-if (manifest.id !== './') throw new Error('PWA manifest must keep a stable project identity.')
-if (manifest.start_url !== './#/home' || manifest.scope !== './') {
-  throw new Error('PWA manifest must launch from the project root with the home hash route.')
+if (manifest.id !== '/dom/') throw new Error('PWA manifest must keep the Dom project identity.')
+if (manifest.start_url !== '/dom/#/home' || manifest.scope !== '/') {
+  throw new Error('PWA manifest must launch at /dom and keep qsen.ru navigations inside the Home Screen web app scope.')
 }
 
 const html = await readFile('index.html', 'utf8')
