@@ -4,6 +4,7 @@ import '@fontsource-variable/commissioner/wght.css'
 import '@fontsource-variable/unbounded/wght.css'
 import 'iconoir/css/iconoir.css'
 import { DOM_CATEGORIES, DOM_GUIDES, DOM_CATEGORY_BY_ID, DOM_GUIDE_BY_ID, DOM_ROOMS, DOM_SURFACE_FAMILIES, DOM_JOINT_TYPES, DOM_BASEBOARD_TYPES } from '../content.js'
+import { getLemanaShopping, getGuidePracticalDetail, getMaterialSearchUrl } from '../guide-enrichment.js'
 import './styles.css'
 
 const STORAGE_KEY = 'qsen-dom:saved'
@@ -613,6 +614,8 @@ function GuidePage({ id }) {
   if (!guide) return <NotFound />
   const category = DOM_CATEGORY_BY_ID[guide.category]
   const heroImage = CATEGORY_IMAGE_BY_ID[guide.category] || (id.includes('socket') ? IMAGES.electrical : id.includes('door') ? IMAGES.wood : IMAGES.drywall)
+  const practical = getGuidePracticalDetail(guide)
+  const shopping = getLemanaShopping(guide)
   return (
     <main className="page guide-page">
       <div className="guide-breadcrumb"><Link href="#/home">Главная</Link><span>›</span><Link href={`#/category/${guide.category}`}>{category?.title || 'Раздел'}</Link><span>›</span><b>{guide.title}</b></div>
@@ -624,6 +627,8 @@ function GuidePage({ id }) {
         <aside className="guide-toc" data-reveal>
           <strong>Содержание</strong>
           {guide.steps.map((step, i) => <button key={step.title} className={activeStep === i ? 'active' : ''} onClick={() => { setActiveStep(i); document.getElementById(`step-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}><span>{i + 1}</span>{step.title}</button>)}
+          <button onClick={() => document.getElementById('practical')?.scrollIntoView({ behavior: 'smooth' })}><span>✓</span>Практический разбор</button>
+          <button onClick={() => document.getElementById('shopping')?.scrollIntoView({ behavior: 'smooth' })}><span>₽</span>Что купить</button>
           <button onClick={() => document.getElementById('mistakes')?.scrollIntoView({ behavior: 'smooth' })}><span>!</span>Частые ошибки</button>
           {guide.sources?.length ? <button onClick={() => document.getElementById('sources')?.scrollIntoView({ behavior: 'smooth' })}><span>↗</span>Источники</button> : null}
         </aside>
@@ -633,13 +638,48 @@ function GuidePage({ id }) {
             <InfoList title="Что понадобится" items={[...guide.tools.slice(0, 4), ...guide.materials.slice(0, 2)]} icon="hammer" />
             <div className="master-tip"><div className="master-avatar">М</div><div><strong>Совет мастера</strong><p>{guide.before[0]}</p></div></div>
           </div>
+          <section className="material-links" data-reveal>
+            <div><span className="overline">Материалы из этой инструкции</span><p>Быстрый переход в каталог. Размер и совместимость всё равно сверяйте с конкретным узлом.</p></div>
+            <div className="material-links__list">
+              {guide.materials.map((material) => <a href={getMaterialSearchUrl(material)} target="_blank" rel="noreferrer" key={material}>{material}<Icon name="arrow" size={13} /></a>)}
+            </div>
+          </section>
           <section className="before-box" data-reveal><span><Icon name="warning" /></span><div><strong>Перед началом</strong>{guide.before.map((item) => <p key={item}>{item}</p>)}</div></section>
+          <section id="practical" className="practical-detail" data-reveal>
+            <div className="practical-detail__head">
+              <span className="overline">Практический разбор</span>
+              <h2>Что важно решить до работы и как принять результат</h2>
+              <p>Здесь собраны детали, которые обычно теряются в коротких инструкциях: выбор системы, контроль скрытых этапов и признаки, когда нельзя просто продолжать отделку.</p>
+            </div>
+            <div className="practical-detail__grid">
+              <div className="practical-card"><span>01</span><strong>Как выбирать материалы и узел</strong><ul>{practical.selection.map((item) => <li key={item}>{item}</li>)}</ul></div>
+              <div className="practical-card"><span>02</span><strong>Как проверить качество</strong><ul>{practical.quality.map((item) => <li key={item}>{item}</li>)}</ul></div>
+            </div>
+            <div className="practical-stop"><Icon name="warning" size={18} /><div><strong>Когда не стоит продолжать</strong><p>{practical.stop}</p></div></div>
+          </section>
           <section className="steps-rich">
             {guide.steps.map((step, i) => (
               <article id={`step-${i}`} className="rich-step" data-reveal key={step.title}>
                 <div className="rich-step__number">{i + 1}</div><div><h2>{step.title}</h2><p>{step.text}</p>{i === 0 && <div className="mini-diagram"><span /><span /><span /><b>90°</b></div>}</div>
               </article>
             ))}
+          </section>
+          <section id="shopping" className="shopping-section" data-reveal>
+            <div className="shopping-section__head">
+              <div><span className="overline">Что купить</span><h2>Подходящие товары в Лемана ПРО</h2></div>
+              <p>Это не реклама и не жёсткая привязка к одному бренду. Карточки показывают нужный тип, размер и назначение товара; цена и наличие зависят от выбранного магазина.</p>
+            </div>
+            <div className="shopping-grid">
+              {shopping.map((item) => (
+                <a className="shopping-card" href={item.url} target="_blank" rel="noreferrer" key={item.id + item.title}>
+                  <div className="shopping-card__meta"><span>{item.kind}</span>{item.sku ? <b>ЛМ {item.sku}</b> : <b>Каталог</b>}</div>
+                  <strong>{item.title}</strong>
+                  <p>{item.spec}</p>
+                  <span className="shopping-card__cta">Открыть в Лемана ПРО <Icon name="arrow" size={14} /></span>
+                </a>
+              ))}
+            </div>
+            <div className="shopping-note"><Icon name="check" size={17} /><p><b>Перед заказом:</b> сверь основание, толщину слоёв, размер крепежа и системную совместимость. Если товар исчезнет из продажи, ссылка поиска приведёт к актуальным аналогам.</p></div>
           </section>
           <section id="mistakes" className="mistakes-grid" data-reveal>
             <div><span className="overline danger">Частые ошибки</span><ul>{guide.mistakes.map((item) => <li key={item}>{item}</li>)}</ul></div>
@@ -679,7 +719,7 @@ function normalize(value) {
   return String(value || '').toLocaleLowerCase('ru').replaceAll('ё', 'е').replace(/[^\p{L}\p{N}\s-]+/gu, ' ').replace(/\s+/g, ' ').trim()
 }
 
-const SEARCH_INDEX = DOM_GUIDES.map((guide) => ({ guide, text: normalize([guide.title, guide.summary, guide.task, guide.material, ...guide.tags, ...guide.tools, ...guide.materials].join(' ')) }))
+const SEARCH_INDEX = DOM_GUIDES.map((guide) => { const shopping = getLemanaShopping(guide); return { guide, text: normalize([guide.title, guide.summary, guide.task, guide.material, ...guide.tags, ...guide.tools, ...guide.materials, ...shopping.map((item) => item.title + ' ' + item.kind)].join(' ')) } })
 
 function getSearchResults(query) {
   const needle = normalize(query)
