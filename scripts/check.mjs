@@ -39,6 +39,17 @@ for (const feature of ['createRoot', 'document.startViewTransition', 'Intersecti
   if (!source.includes(feature)) throw new Error(`Premium React feature missing: ${feature}`)
 }
 
+for (const designToken of [
+  '@fontsource-variable/commissioner',
+  '@fontsource-variable/unbounded',
+  'iconoir/css/iconoir.css',
+  'ICON_NAMES',
+  'logo__roof',
+]) {
+  if (!source.includes(designToken)) throw new Error(`Design system v2 dependency missing: ${designToken}`)
+}
+if (source.includes('const iconPaths =')) throw new Error('Legacy generic inline icon set must not return.')
+
 const sw = await readFile('sw.js', 'utf8')
 if (!sw.includes('self.registration.scope')) throw new Error('Service worker must derive its base path from registration scope.')
 if (!sw.includes('appShellFallback')) throw new Error('Service worker navigation fallback is missing.')
