@@ -7,7 +7,7 @@ const vite = process.platform === 'win32' ? 'node_modules/.bin/vite.cmd' : 'node
 const result = spawnSync(vite, ['build', '--base=./'], { stdio: 'inherit' })
 if (result.status !== 0) process.exit(result.status ?? 1)
 
-for (const file of ['manifest.webmanifest', 'sw.js', 'icon.svg']) {
+for (const file of ['manifest.webmanifest', 'sw.js', 'icon.svg', '404.html']) {
   await cp(file, `dist/${file}`)
 }
 
