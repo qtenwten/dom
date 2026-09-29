@@ -759,6 +759,18 @@ const VERIFIED_SUPPLY_IMAGES = {
   'respirator-p2': 'https://media.gettyimages.com/id/939788366/photo/safety-mask-for-dust-protection.jpg?s=2048x2048&w=gi&k=20',
   'hearing-protection': 'https://m.media-amazon.com/images/I/71XAnwV+3PL._AC_SL1500_.jpg',
   'work-gloves': 'https://media.gettyimages.com/id/180718964/photo/leather-work-glove.jpg?s=2048x2048&w=gi&k=20',
+  'impact-driver': 'https://cdn11.bigcommerce.com/s-x2w8g0/images/stencil/1280x1280/products/47290/184938/dcf840d1_1__50547.1660239874.jpg',
+  'torx-bit-set': 'https://images.tekton.com/assets/tekton-bit-set-set-dzt93001_contents.jpg',
+  'diamond-hole-saw': 'https://budpostach.ua/image/cache/catalog/image/cache/catalog/easyphoto/1932/haisser-almazna-koronka-po-keramogranitu-45mm-1-1200x1200.webp',
+  'utility-knife': 'https://www.bmsteel.co.uk/images/products/large/stanley-fatmax-retractable-utility-knife.jpg',
+  'drywall-spatula': 'https://cdn11.bigcommerce.com/s-3ibd7k/images/stencil/1280x1280/products/4367/13631/sheetrock-14-classic-stainless-drywall-taping-knife__10020.1685557789.jpg',
+  'sealing-tape-profile': 'https://bilder.obi.cz/79504790-e947-43bc-9551-50c4af2e61d2/prZZH/1058_PEDichtungsband30mm_1.jpg',
+  'moisture-drywall-sheet': 'https://media.cdn.bauhaus/m/521509-1/prod_xl_square.jpg',
+  'side-cutters': 'https://media.toolstation.com/images/141020-UK/800/64723.jpg',
+  'water-pump-pliers': 'https://media.gettyimages.com/id/512319449/photo/water-pump-pliers.jpg?s=2048x2048&w=gi&k=20',
+  'thread-seal-cord': 'https://www.cec.ie/media/catalog/product/cache/87a3c23d03b53d29bc0098e2859ceb7a/l/o/loctite_thread_sealant_50m_f5f4.jpg',
+  'cordless-drill-driver': 'https://media.gettyimages.com/id/1097026518/photo/cordless-drill-driver-isolated-on-white-background.jpg?s=2048x2048&w=gi&k=20',
+  'safety-glasses': 'https://media.gettyimages.com/id/183382827/photo/safety-glasses.jpg?s=2048x2048&w=gi&k=20',
 }
 
 DOM_SUPPLIES.forEach((item) => {
