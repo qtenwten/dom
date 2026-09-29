@@ -5,6 +5,7 @@ import '@fontsource-variable/unbounded/wght.css'
 import 'iconoir/css/iconoir.css'
 import { DOM_CATEGORIES, DOM_GUIDES, DOM_CATEGORY_BY_ID, DOM_GUIDE_BY_ID, DOM_ROOMS, DOM_SURFACE_FAMILIES, DOM_JOINT_TYPES, DOM_BASEBOARD_TYPES } from '../content.js'
 import { getLemanaShopping, getGuidePracticalDetail, getMaterialSearchUrl } from '../guide-enrichment.js'
+import { DOM_SUPPLIES, DOM_SUPPLY_BY_ID, DOM_SUPPLY_CATEGORIES, SUPPLY_KINDS } from '../supplies.js'
 import './styles.css'
 import PlannerPage from './planner.jsx'
 
@@ -50,7 +51,8 @@ function parseRoute(hash = window.location.hash) {
   if (!bits.length || bits[0] === 'home') return { view: 'home', key: 'home' }
   if (bits[0] === 'category' && bits[1]) return { view: 'category', id: bits[1], key: `category-${bits[1]}` }
   if (bits[0] === 'guide' && bits[1]) return { view: 'guide', id: bits[1], key: `guide-${bits[1]}` }
-  if (['catalog', 'search', 'calculator', 'planner', 'saved', 'project'].includes(bits[0])) return { view: bits[0], key: bits[0] }
+  if (bits[0] === 'supplies' && bits[1]) return { view: 'supply', id: bits[1], key: `supply-${bits[1]}` }
+  if (['catalog', 'supplies', 'search', 'calculator', 'planner', 'saved', 'project'].includes(bits[0])) return { view: bits[0], key: bits[0] }
   return { view: 'home', key: 'home' }
 }
 
@@ -294,7 +296,7 @@ function Header({ query, setQuery, openPalette }) {
             <Link href="#/catalog" className={['catalog', 'category', 'guide'].includes(route.view) ? 'active' : ''}>База знаний</Link>
             <Link href="#/calculator" className={route.view === 'calculator' ? 'active' : ''}>Калькуляторы</Link>
             <Link href="#/planner" className={route.view === 'planner' ? 'active' : ''}>3D планировщик</Link>
-            <Link href="#/catalog">Материалы</Link>
+            <Link href="#/supplies">Инструменты</Link>
             <Link href="#/saved">Идеи</Link>
           </nav>
           <div className="header-actions">
@@ -311,6 +313,7 @@ function Header({ query, setQuery, openPalette }) {
         <Link href="#/catalog" onClick={() => setMobileMenu(false)}>База знаний <Icon name="chevron" /></Link>
         <Link href="#/calculator" onClick={() => setMobileMenu(false)}>Калькуляторы <Icon name="chevron" /></Link>
         <Link href="#/planner" onClick={() => setMobileMenu(false)}>3D планировщик <Icon name="chevron" /></Link>
+        <Link href="#/supplies" onClick={() => setMobileMenu(false)}>Инструменты и расходники <Icon name="chevron" /></Link>
         <Link href="#/saved" onClick={() => setMobileMenu(false)}>Сохранённое <Icon name="chevron" /></Link>
       </div>
     </>
@@ -677,6 +680,59 @@ function CatalogPage() {
   )
 }
 
+function SuppliesPage() {
+  const [filter, setFilter] = useState('all')
+  const [needle, setNeedle] = useState('')
+  const normalized = needle.trim().toLocaleLowerCase('ru')
+  const visible = DOM_SUPPLIES.filter((item) => {
+    if (filter !== 'all' && item.category !== filter) return false
+    if (!normalized) return true
+    return [item.title, item.summary, ...(item.aliases || []), ...(item.useFor || [])].join(' ').toLocaleLowerCase('ru').includes(normalized)
+  })
+  const kindCounts = Object.keys(SUPPLY_KINDS).map((kind) => [kind, DOM_SUPPLIES.filter((item) => item.kind === kind).length])
+  return (
+    <main className="page page--paper supplies-page">
+      <PageIntro eyebrow="Практический каталог" title="Инструменты и расходники" text="Не просто названия: что это, где применяется, как выбрать, чем совместимо и как использовать. Розничные данные вынесены отдельно — позже каталог можно подключить к API Лемана ПРО без переделки интерфейса." />
+      <section className="supply-stats" data-reveal>
+        {kindCounts.filter(([, count]) => count).map(([kind, count]) => <div key={kind}><strong>{count}</strong><span>{SUPPLY_KINDS[kind]}</span></div>)}
+      </section>
+      <div className="supply-toolbar" data-reveal>
+        <label><Icon name="search" size={18} /><input value={needle} onChange={(e) => setNeedle(e.target.value)} placeholder="Перфоратор, PH2, подрозетник, малярная лента…" /></label>
+        <div className="supply-filters">{DOM_SUPPLY_CATEGORIES.map(([id, label]) => <button key={id} className={filter === id ? 'active' : ''} onClick={() => setFilter(id)}>{label}</button>)}</div>
+      </div>
+      <div className="supply-grid">
+        {visible.map((item) => <article className="supply-card" key={item.id} data-reveal>
+          <Link href={`#/supplies/${item.id}`} className="supply-card__image"><img src={item.image} alt={item.title} loading="lazy" /><span>{SUPPLY_KINDS[item.kind]}</span></Link>
+          <div className="supply-card__body"><small>{item.useFor.slice(0, 3).join(' · ')}</small><Link href={`#/supplies/${item.id}`}><h3>{item.title}</h3></Link><p>{item.summary}</p><div><Link href={`#/supplies/${item.id}`}>Как использовать <Icon name="arrow" size={15} /></Link><a href={item.retailer.url} target="_blank" rel="noreferrer">Лемана ПРО ↗</a></div></div>
+        </article>)}
+      </div>
+      {!visible.length && <Empty title="Ничего не найдено" text="Попробуйте бытовое название или другую категорию." />}
+    </main>
+  )
+}
+
+function SupplyPage({ id }) {
+  const item = DOM_SUPPLY_BY_ID[id]
+  if (!item) return <NotFound />
+  return (
+    <main className="page page--paper supply-page">
+      <div className="guide-breadcrumb"><Link href="#/catalog">База знаний</Link><span>›</span><Link href="#/supplies">Инструменты и расходники</Link><span>›</span><b>{item.title}</b></div>
+      <header className="supply-detail-head" data-reveal>
+        <div className="supply-detail-head__image"><img src={item.image} alt={item.title} /></div>
+        <div><span className="overline">{SUPPLY_KINDS[item.kind]}</span><h1>{item.title}</h1><p>{item.summary}</p><div className="guide-tags">{item.aliases.map((alias) => <span key={alias}>{alias}</span>)}</div><a className="button-dark supply-buy" href={item.retailer.url} target="_blank" rel="noreferrer">Найти в Лемана ПРО ↗</a><small className="supply-retail-note">Сейчас открывается поиск по точному типу товара. После подключения API здесь появятся конкретные артикулы, цены и наличие.</small></div>
+      </header>
+      <div className="supply-detail-grid">
+        <section><span className="overline">Назначение</span><h2>Для чего нужен</h2><div className="supply-use-list">{item.useFor.map((x) => <span key={x}>{x}</span>)}</div></section>
+        <section><span className="overline">Выбор</span><h2>Как выбрать</h2><p>{item.choose}</p></section>
+        <section className="supply-instruction"><span className="overline">Практика</span><h2>Как использовать</h2><ol>{item.instruction.map((x, i) => <li key={x}><span>{String(i + 1).padStart(2, '0')}</span><p>{x}</p></li>)}</ol></section>
+        <section className="supply-warning"><Icon name="warning" /><div><span className="overline">Безопасность</span><h2>Перед работой</h2><p>{item.safety}</p></div></section>
+        <section><span className="overline">Совместимость</span><h2>Что подходит</h2><div className="supply-use-list">{item.compatibility.map((x) => <span key={x}>{x}</span>)}</div></section>
+        {item.related?.length ? <section><span className="overline">Связанные позиции</span><h2>Понадобится рядом</h2><div className="supply-related">{item.related.map((relatedId) => DOM_SUPPLY_BY_ID[relatedId] ? <Link key={relatedId} href={`#/supplies/${relatedId}`}>{DOM_SUPPLY_BY_ID[relatedId].title}<Icon name="chevron" size={15} /></Link> : null)}</div></section> : null}
+      </div>
+    </main>
+  )
+}
+
 function CategoryPage({ id }) {
   const category = DOM_CATEGORY_BY_ID[id]
   if (!category) return <NotFound />
@@ -1006,12 +1062,15 @@ function App() {
 
   useEffect(() => {
     const guide = route.view === 'guide' ? DOM_GUIDE_BY_ID[route.id] : null
-    const titles = { home: 'Дом — ремонт и строительство', catalog: 'Разделы — Дом', search: 'Поиск — Дом', calculator: 'Калькуляторы — Дом', planner: '3D планировщик квартиры — Дом', saved: 'Сохранённое — Дом', project: 'Мой проект — Дом' }
-    document.title = guide ? `${guide.title} — Дом` : (titles[route.view] || 'Дом — ремонт и строительство')
+    const supply = route.view === 'supply' ? DOM_SUPPLY_BY_ID[route.id] : null
+    const titles = { home: 'Дом — ремонт и строительство', catalog: 'Разделы — Дом', supplies: 'Инструменты и расходники — Дом', search: 'Поиск — Дом', calculator: 'Калькуляторы — Дом', planner: '3D планировщик квартиры — Дом', saved: 'Сохранённое — Дом', project: 'Мой проект — Дом' }
+    document.title = guide ? `${guide.title} — Дом` : supply ? `${supply.title} — Дом` : (titles[route.view] || 'Дом — ремонт и строительство')
   }, [route])
 
   const page = route.view === 'home' ? <HomePage query={query} setQuery={setQuery} />
     : route.view === 'catalog' ? <CatalogPage />
+    : route.view === 'supplies' ? <SuppliesPage />
+    : route.view === 'supply' ? <SupplyPage id={route.id} />
     : route.view === 'category' ? <CategoryPage id={route.id} />
     : route.view === 'guide' ? <GuidePage id={route.id} />
     : route.view === 'search' ? <SearchPage query={query} setQuery={setQuery} />
