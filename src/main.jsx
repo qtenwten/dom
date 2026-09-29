@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import '@fontsource-variable/commissioner/wght.css'
 import '@fontsource-variable/unbounded/wght.css'
 import 'iconoir/css/iconoir.css'
-import { DOM_CATEGORIES, DOM_GUIDES, DOM_CATEGORY_BY_ID, DOM_GUIDE_BY_ID } from '../content.js'
+import { DOM_CATEGORIES, DOM_GUIDES, DOM_CATEGORY_BY_ID, DOM_GUIDE_BY_ID, DOM_ROOMS, DOM_SURFACE_FAMILIES, DOM_JOINT_TYPES, DOM_BASEBOARD_TYPES } from '../content.js'
 import './styles.css'
 
 const STORAGE_KEY = 'qsen-dom:saved'
@@ -34,6 +34,7 @@ const CATEGORY_IMAGE_BY_ID = {
   ventilation: IMAGES.tools,
   'windows-doors': IMAGES.apartment,
   finishing: IMAGES.kitchen,
+  surfaces: IMAGES.wood,
   roof: IMAGES.hero,
   site: IMAGES.apartment,
 }
@@ -466,18 +467,96 @@ function HomePage({ query, setQuery }) {
   </>
 }
 
+function RoomExplorer() {
+  const [roomId, setRoomId] = useState(DOM_ROOMS[0]?.id || '')
+  const room = DOM_ROOMS.find((item) => item.id === roomId) || DOM_ROOMS[0]
+  if (!room) return null
+
+  const surfaceById = Object.fromEntries(DOM_SURFACE_FAMILIES.map((item) => [item.id, item]))
+  const baseboardById = Object.fromEntries(DOM_BASEBOARD_TYPES.map((item) => [item.id, item]))
+  const recommendedGuides = room.guideIds.map((id) => DOM_GUIDE_BY_ID[id]).filter(Boolean)
+
+  const SurfacePills = ({ ids, kind }) => (
+    <div className="room-material-list">
+      {ids.map((id) => {
+        const surface = surfaceById[id]
+        if (!surface) return null
+        return <span className={`room-material room-material--${kind}`} key={id}><b>{surface.title}</b><small>{surface.summary}</small></span>
+      })}
+    </div>
+  )
+
+  return (
+    <section className="room-explorer" data-reveal>
+      <div className="room-explorer__head">
+        <div><span className="overline">Подбор по помещению</span><h2>Сначала выберите комнату</h2><p>Ванная и спальня не должны получать одинаковую отделку. Здесь рекомендации завязаны на воду, трафик, уборку, акустику и ремонтопригодность.</p></div>
+        <Link href="#/category/surfaces">Все покрытия и стыки <Icon name="arrow" size={16} /></Link>
+      </div>
+      <div className="room-tabs" role="tablist" aria-label="Помещения">
+        {DOM_ROOMS.map((item) => <button type="button" role="tab" aria-selected={item.id === room.id} className={item.id === room.id ? 'active' : ''} onClick={() => setRoomId(item.id)} key={item.id}><span>{item.icon}</span>{item.title}</button>)}
+      </div>
+      <div className="room-board">
+        <aside className="room-board__summary">
+          <span className="room-board__icon">{room.icon}</span>
+          <div><small>Помещение</small><h3>{room.title}</h3></div>
+          <strong>Главные нагрузки</strong>
+          <div className="room-demands">{room.demands.map((item) => <span key={item}>{item}</span>)}</div>
+          <strong>Неудачные сценарии</strong>
+          <ul>{room.avoid.map((item) => <li key={item}>{item}</li>)}</ul>
+          <div className="room-paint-note"><Icon name="spark" size={17} /><p><b>Краска:</b> {room.paint}</p></div>
+        </aside>
+        <div className="room-board__materials">
+          <div className="room-material-section"><div className="room-material-section__title"><span>01</span><div><strong>Пол</strong><small>{room.floors.length} подходящих семейств</small></div></div><SurfacePills ids={room.floors} kind="floor" /></div>
+          <div className="room-material-section"><div className="room-material-section__title"><span>02</span><div><strong>Стены</strong><small>{room.walls.length} вариантов отделки</small></div></div><SurfacePills ids={room.walls} kind="wall" /></div>
+          <div className="room-material-section room-material-section--compact">
+            <div className="room-material-section__title"><span>03</span><div><strong>Плинтусы</strong><small>по условиям комнаты</small></div></div>
+            <div className="baseboard-pills">{room.baseboards.map((id) => <span key={id}>{baseboardById[id]?.title || id}</span>)}</div>
+          </div>
+          <div className="room-material-section room-material-section--compact">
+            <div className="room-material-section__title"><span>04</span><div><strong>Стыки</strong><small>узлы, которые надо решить заранее</small></div></div>
+            <div className="baseboard-pills">{room.joints.map((id) => <span key={id}>{DOM_JOINT_TYPES.find((item) => item.id === id)?.title || id}</span>)}</div>
+          </div>
+        </div>
+      </div>
+      <div className="room-guides">
+        <span>Инструкции по этой комнате</span>
+        {recommendedGuides.map((guide) => <Link href={`#/guide/${guide.id}`} key={guide.id}><strong>{guide.title}</strong><Icon name="arrow" size={15} /></Link>)}
+      </div>
+    </section>
+  )
+}
+
+function SurfaceAtlas() {
+  const floorCount = DOM_SURFACE_FAMILIES.filter((item) => item.kind.includes('floor')).length
+  const wallCount = DOM_SURFACE_FAMILIES.filter((item) => item.kind.includes('wall')).length
+  return (
+    <section className="surface-atlas" data-reveal>
+      <div className="section-title-row"><div><span className="overline">Энциклопедия материалов</span><h2>Покрытия, стыки и плинтусы</h2></div><Link href="#/category/surfaces">Открыть узлы <Icon name="arrow" size={16} /></Link></div>
+      <div className="surface-atlas__stats">
+        <Link href="#/category/floors"><span>{floorCount}</span><strong>типов покрытий пола</strong><small>от дерева и пробки до LVT, резины и смоляных систем</small></Link>
+        <Link href="#/category/finishing"><span>{wallCount}</span><strong>типов покрытий стен</strong><small>краски, обои, панели, камень, микроцемент и фактуры</small></Link>
+        <Link href="#/category/surfaces"><span>{DOM_JOINT_TYPES.length}</span><strong>типов стыков</strong><small>в один уровень, с перепадом, деформационные и эластичные</small></Link>
+        <Link href="#/category/surfaces"><span>{DOM_BASEBOARD_TYPES.length}</span><strong>типов плинтусов</strong><small>MDF, дерево, полимер, металл, скрытые и санитарные</small></Link>
+      </div>
+    </section>
+  )
+}
+
 function CatalogPage() {
   return (
     <main className="page page--paper catalog-page">
-      <PageIntro eyebrow="База знаний" title="Разделы" text="Выберите тему или найдите конкретную задачу. Структура растёт вместе со справочником, не превращаясь в свалку статей." />
-      <div className="catalog-search-row"><Link href="#/search" className="catalog-search"><Icon name="search" /> Поиск по разделам, статьям, инструментам…</Link><div className="chips"><span className="active">Все</span><span>Статьи</span><span>Инструменты</span></div></div>
+      <PageIntro eyebrow="База знаний" title="Разделы" text="Выберите тему или конкретное помещение. Справочник связывает материалы, условия эксплуатации, стыки и технологию монтажа." />
+      <div className="catalog-search-row"><Link href="#/search" className="catalog-search"><Icon name="search" /> Поиск по разделам, статьям, материалам…</Link><div className="chips"><span className="active">Все</span><span>Статьи</span><span>Материалы</span></div></div>
+      <RoomExplorer />
+      <SurfaceAtlas />
+      <div className="section-title-row catalog-sections-title"><div><span className="overline">Все направления</span><h2>Разделы справочника</h2></div></div>
       <div className="category-gallery">
-        {DOM_CATEGORIES.slice(0, 12).map((category, i) => {
+        {DOM_CATEGORIES.map((category, i) => {
           const count = DOM_GUIDES.filter((guide) => guide.category === category.id).length
           return (
             <TiltCard className="category-photo" key={category.id} data-reveal>
               <Link href={`#/category/${category.id}`}>
-                <img src={CATEGORY_ART[i % CATEGORY_ART.length]} alt="" loading="lazy" />
+                <img src={CATEGORY_IMAGE_BY_ID[category.id] || CATEGORY_ART[i % CATEGORY_ART.length]} alt="" loading="lazy" />
                 <div className="category-photo__shade" />
                 <div><strong>{category.title}</strong><small>{count ? `${count} инструкций` : 'Раздел готовится'}</small></div>
                 <span><Icon name="arrow" size={16} /></span>
@@ -488,7 +567,7 @@ function CatalogPage() {
       </div>
       <section className="popular-guides">
         <div className="section-title-row"><div><span className="overline">С чего начать</span><h2>Популярные инструкции</h2></div></div>
-        <div className="guide-card-grid">{DOM_GUIDES.slice(0, 6).map((guide, i) => <GuideCard key={guide.id} guide={guide} image={CATEGORY_ART[i % CATEGORY_ART.length]} />)}</div>
+        <div className="guide-card-grid">{DOM_GUIDES.filter((guide) => ['room-kitchen-surfaces','room-bathroom-surfaces','surfaces-floor-transition-plan','paint-sheen-room-guide','floor-lvt-guide','wall-decorative-plaster-guide'].includes(guide.id)).map((guide, i) => <GuideCard key={guide.id} guide={guide} image={CATEGORY_ART[i % CATEGORY_ART.length]} />)}</div>
       </section>
     </main>
   )

@@ -1,3 +1,5 @@
+import { SURFACE_SOURCES, SURFACE_GUIDE_DEFINITIONS, DOM_ROOMS, DOM_SURFACE_FAMILIES, DOM_JOINT_TYPES, DOM_BASEBOARD_TYPES } from './surface-content.js'
+
 export const DOM_CATEGORIES = [
   {
     "id": "planning",
@@ -66,6 +68,12 @@ export const DOM_CATEGORIES = [
     "description": "Штукатурка, шпаклёвка, покраска, обои, плитка и подготовка оснований."
   },
   {
+    "id": "surfaces",
+    "title": "Покрытия, стыки и плинтусы",
+    "icon": "⌁",
+    "description": "Все основные покрытия пола и стен, примыкания, деформационные швы, переходные профили и плинтусы."
+  },
+  {
     "id": "roof",
     "title": "Крыша",
     "icon": "⌂",
@@ -80,6 +88,7 @@ export const DOM_CATEGORIES = [
 ]
 
 export const DOM_SOURCES = {
+  ...SURFACE_SOURCES,
   "knauf_tech": {
     "title": "Технические решения КНАУФ: альбомы рабочих чертежей и узлы",
     "publisher": "КНАУФ",
@@ -762,6 +771,29 @@ const CATEGORY_KITS = {
       "sp71_vapor",
       "sp50_thermal",
       "velux_install"
+    ]
+  },
+  "surfaces": {
+    "tools": [
+      "план помещения",
+      "лазерный уровень",
+      "рулетка",
+      "образцы покрытий"
+    ],
+    "materials": [
+      "технические листы выбранных покрытий",
+      "переходные профили и системные примыкания"
+    ],
+    "before": [
+      "Сначала определи нагрузки помещения: воду, грязь, трафик, уборку, температуру и требования к ремонту.",
+      "Сложи фактическую толщину пирога каждого покрытия до стяжки, дверей и встроенной мебели.",
+      "Стыки, плинтусы и деформационные зазоры являются частью системы пола и стены, а не декоративной мелочью."
+    ],
+    "verification": "Покрытие и примыкания подбираются по технической документации конкретного продукта, условиям помещения и требованиям основания.",
+    "sourceIds": [
+      "schluter_transitions",
+      "schluter_movement",
+      "schluter_baseboard"
     ]
   },
   "site": {
@@ -3675,10 +3707,15 @@ function buildCoreGuide(definition) {
     diagram: null,
     verification: definition.verification || kit.verification,
     sources: resolveSources(definition.category, definition.sourceIds),
+    rooms: definition.rooms || [],
+    surfaceKind: definition.surfaceKind || null,
+    surfaceId: definition.surfaceId || null,
   }
 }
 
-export const DOM_GUIDES = [...BASE_GUIDES.map(enrichBaseGuide), ...CORE_GUIDE_DEFINITIONS.map(buildCoreGuide)]
+export const DOM_GUIDES = [...BASE_GUIDES.map(enrichBaseGuide), ...CORE_GUIDE_DEFINITIONS.map(buildCoreGuide), ...SURFACE_GUIDE_DEFINITIONS.map(buildCoreGuide)]
 
 export const DOM_CATEGORY_BY_ID = Object.fromEntries(DOM_CATEGORIES.map((category) => [category.id, category]))
 export const DOM_GUIDE_BY_ID = Object.fromEntries(DOM_GUIDES.map((guide) => [guide.id, guide]))
+
+export { DOM_ROOMS, DOM_SURFACE_FAMILIES, DOM_JOINT_TYPES, DOM_BASEBOARD_TYPES }
