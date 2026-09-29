@@ -694,6 +694,13 @@ export function getLemanaShopping(guide) {
     }
   }
 
+  if (items.length < 4) {
+    for (const id of ['tapeMeasure', 'laserLevel', 'maskingTape', 'detector']) {
+      addById(id)
+      if (items.length >= 4) break
+    }
+  }
+
   return items
 }
 
