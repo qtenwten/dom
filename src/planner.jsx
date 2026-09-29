@@ -39,6 +39,7 @@ const snap = (value, grid) => Math.round(value / grid) * grid
 const round = (value, digits = 1) => Number(value.toFixed(digits))
 const roomWallLength = (room, side) => side === 'north' || side === 'south' ? room.width : room.depth
 const openingArea = (opening) => (opening.width * opening.height) / 10000
+const lemanaSearch = (query) => 'https://lemanapro.ru/search/?q=' + encodeURIComponent(query)
 
 function makeWall(overrides = {}) {
   return {
@@ -128,6 +129,7 @@ function sampleProject() {
     grid: 20,
     rooms: [living, kitchen, bedroom, bath],
     freeWalls: [],
+    prices: {},
   }
 }
 
@@ -179,6 +181,7 @@ function normalizeProject(input) {
       thickness: clamp(raw.thickness, 40, 1000),
       openings: Array.isArray(raw.openings) ? raw.openings.slice(0, 30) : [],
     })) : [],
+    prices: input.prices && typeof input.prices === 'object' ? input.prices : {},
   }
 }
 
@@ -253,6 +256,16 @@ function buildTakeoff(project) {
   const ceilingGroups = {}
   const wallFinishGroups = {}
   const wallMaterialAreas = {}
+  const structuralSegments = new Set()
+  const segmentKey = (room, side, wall) => {
+    const endpoints = side === 'north' ? [room.x, room.y, room.x + room.width, room.y]
+      : side === 'south' ? [room.x, room.y + room.depth, room.x + room.width, room.y + room.depth]
+      : side === 'west' ? [room.x, room.y, room.x, room.y + room.depth]
+      : [room.x + room.width, room.y, room.x + room.width, room.y + room.depth]
+    const a = endpoints[0] + ',' + endpoints[1]
+    const b = endpoints[2] + ',' + endpoints[3]
+    return [a < b ? a : b, a < b ? b : a, wall.material, wall.thickness].join('|')
+  }
 
   project.rooms.forEach((room) => {
     const floorArea = room.width * room.depth / 10000
@@ -265,7 +278,11 @@ function buildTakeoff(project) {
       const net = Math.max(0, gross - openings)
       wallFinishGroups[wall.finish] = (wallFinishGroups[wall.finish] || 0) + net
       const key = wall.material + ':' + wall.thickness
-      wallMaterialAreas[key] = (wallMaterialAreas[key] || 0) + net
+      const physicalSegment = segmentKey(room, side, wall)
+      if (!structuralSegments.has(physicalSegment)) {
+        structuralSegments.add(physicalSegment)
+        wallMaterialAreas[key] = (wallMaterialAreas[key] || 0) + net
+      }
     })
   })
   project.freeWalls.forEach((wall) => {
@@ -539,13 +556,15 @@ function FloorPlan3D({ project, selected, setSelected, angle }) {
   </svg>
 }
 
-function MaterialsView({ project }) {
+function MaterialsView({ project, onPriceChange }) {
   const metrics = useMemo(() => projectMetrics(project), [project])
   const rows = useMemo(() => buildTakeoff(project), [project])
   const grouped = rows.reduce((acc, row) => {
     ;(acc[row.group] ||= []).push(row)
     return acc
   }, {})
+  const rowKey = (row) => row.group + '|' + row.name
+  const totalBudget = rows.reduce((sum, row) => sum + row.qty * (Number(project.prices?.[rowKey(row)]) || 0), 0)
   return <div className="planner-report">
     <div className="planner-kpis">
       <div><small>Пол / потолок</small><strong>{metrics.floorArea.toFixed(1)} м²</strong></div>
@@ -554,7 +573,8 @@ function MaterialsView({ project }) {
       <div><small>Проёмы</small><strong>{metrics.openingCount} шт</strong></div>
     </div>
     <div className="planner-report-note"><b>Ведомость автоматически пересчитывается из геометрии.</b><span>Запасы и нормы здесь служат отправной точкой закупки. Перед заказом конструкционных материалов проверьте конкретную систему производителя, раскладку, основание и проектные требования.</span></div>
-    {Object.entries(grouped).map(([group, items]) => <section className="material-group" key={group}><div className="material-group__title"><span>{group}</span><small>{items.length} поз.</small></div>{items.map((row, index) => <div className="material-row" key={row.name + index}><div><strong>{row.name}</strong><small>{row.note}</small></div><span>{row.qty} {row.unit}</span><b>запас {row.reserve}</b></div>)}</section>)}
+    <div className="planner-budget-total"><span>Ориентир по введённым ценам</span><strong>{Math.round(totalBudget).toLocaleString('ru-RU')} ₽</strong></div>
+    {Object.entries(grouped).map(([group, items]) => <section className="material-group" key={group}><div className="material-group__title"><span>{group}</span><small>{items.length} поз.</small></div>{items.map((row, index) => { const key = rowKey(row); const price = project.prices?.[key] ?? ''; return <div className="material-row" key={row.name + index}><div className="material-name"><strong>{row.name}</strong><small>{row.note}</small><a href={lemanaSearch(row.name)} target="_blank" rel="noreferrer">Подобрать в Лемана ПРО ↗</a></div><span>{row.qty} {row.unit}</span><label className="material-price"><input type="number" min="0" step="1" value={price} placeholder="цена" onChange={(e) => onPriceChange(key, e.target.value)} /><small>₽ / {row.unit}</small></label><b>запас {row.reserve}</b></div> })}</section>)}
   </div>
 }
 
@@ -781,7 +801,7 @@ export default function PlannerPage() {
       </aside>
     </div>}
 
-    {tab === 'materials' && <MaterialsView project={project} />}
+    {tab === 'materials' && <MaterialsView project={project} onPriceChange={(key, value) => commit((current) => ({ ...current, prices: { ...(current.prices || {}), [key]: value === '' ? '' : Math.max(0, Number(value) || 0) } }))} />}
     {tab === 'readiness' && <ReadinessView project={project} />}
 
     {notice && <div className="planner-toast" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice('')}>×</button></div>}
