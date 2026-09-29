@@ -4,8 +4,10 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
+    "dev": "vite",
     "check": "node scripts/check.mjs",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "preview": "vite preview"
   },
   "dependencies": {
     "react": "^19.0.0",
