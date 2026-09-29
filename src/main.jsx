@@ -23,6 +23,7 @@ const IMAGES = {
 }
 
 const CATEGORY_IMAGE_BY_ID = {
+  planning: IMAGES.tools,
   construction: IMAGES.hero,
   drywall: IMAGES.drywall,
   ceilings: IMAGES.room,
@@ -545,6 +546,7 @@ function GuidePage({ id }) {
           <strong>Содержание</strong>
           {guide.steps.map((step, i) => <button key={step.title} className={activeStep === i ? 'active' : ''} onClick={() => { setActiveStep(i); document.getElementById(`step-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}><span>{i + 1}</span>{step.title}</button>)}
           <button onClick={() => document.getElementById('mistakes')?.scrollIntoView({ behavior: 'smooth' })}><span>!</span>Частые ошибки</button>
+          {guide.sources?.length ? <button onClick={() => document.getElementById('sources')?.scrollIntoView({ behavior: 'smooth' })}><span>↗</span>Источники</button> : null}
         </aside>
         <article className="guide-article">
           <div className="article-visual" data-reveal style={{ backgroundImage: `url(${heroImage})` }}><button aria-label="Запустить видео"><Icon name="play" /></button><div className="hand-note">Профиль<br />и крепления →</div></div>
@@ -564,7 +566,26 @@ function GuidePage({ id }) {
             <div><span className="overline danger">Частые ошибки</span><ul>{guide.mistakes.map((item) => <li key={item}>{item}</li>)}</ul></div>
             <div><span className="overline success">Если уже сделал</span><p>{guide.rescue}</p></div>
           </section>
-          <div className="verification" data-reveal><Icon name="check" /><div><strong>Статус материала: рабочий черновик</strong><p>{guide.verification}</p></div></div>
+          <div className="verification" data-reveal><Icon name="check" /><div><strong>{guide.sources?.length ? 'Материал собран по техническим источникам' : 'Статус материала: рабочий черновик'}</strong><p>{guide.verification}</p></div></div>
+          {guide.sources?.length ? (
+            <section id="sources" className="guide-sources" data-reveal>
+              <div className="guide-sources__head">
+                <div><span className="overline">Проверка и первоисточники</span><h2>Откуда взята логика</h2></div>
+                <p>Это не список «для солидности»: источники привязаны к узлам и принципам. Точные размеры, нагрузки и допуски всегда сверяйте с конкретной системой, проектом и действующими требованиями для объекта.</p>
+              </div>
+              <div className="guide-sources__grid">
+                {guide.sources.map((source) => (
+                  <a className="source-card" href={source.url} target="_blank" rel="noreferrer" key={source.id}>
+                    <div className="source-card__meta"><span>{source.scope}</span><span>{source.type}</span></div>
+                    <strong>{source.title}</strong>
+                    <small>{source.publisher}</small>
+                    <p>{source.note}</p>
+                    <b>Открыть источник <Icon name="arrow" size={14} /></b>
+                  </a>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </article>
       </div>
     </main>
@@ -595,7 +616,7 @@ function getSearchResults(query) {
 
 function SearchPage({ query, setQuery }) {
   const results = useMemo(() => getSearchResults(query), [query])
-  const suggestions = ['подрозетник', 'дверной проём', 'профиль', 'минвата', 'трещина', 'телевизор']
+  const suggestions = ['скрытые работы', 'гидроизоляция', 'стяжка', 'вентиляция', 'УЗО', 'звукоизоляция', 'подрозетник', 'тёплый пол']
   return (
     <main className="page page--paper search-page">
       <PageIntro eyebrow="Умный локальный поиск" title="Что нужно сделать?" text="Можно писать бытовым языком — поиск смотрит название задачи, материал, инструмент и типичные формулировки." />
