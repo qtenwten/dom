@@ -18,6 +18,26 @@ for (const file of ['content.js', 'sw.js']) {
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
+
+const { DOM_CATEGORIES, DOM_GUIDES } = await import('../content.js')
+if (DOM_CATEGORIES.length < 12) throw new Error(`Expected at least 12 primary categories, found ${DOM_CATEGORIES.length}.`)
+
+const categoryIds = new Set(DOM_CATEGORIES.map((category) => category.id))
+const guideIds = new Set()
+for (const guide of DOM_GUIDES) {
+  if (!categoryIds.has(guide.category)) throw new Error(`Guide ${guide.id} points to unknown category ${guide.category}.`)
+  if (guideIds.has(guide.id)) throw new Error(`Duplicate guide id: ${guide.id}`)
+  guideIds.add(guide.id)
+  if (!guide.summary || !Array.isArray(guide.steps) || guide.steps.length < 5) {
+    throw new Error(`Guide ${guide.id} is missing a summary or a complete step sequence.`)
+  }
+}
+
+for (const category of DOM_CATEGORIES) {
+  const count = DOM_GUIDES.filter((guide) => guide.category === category.id).length
+  if (count < 5) throw new Error(`Category ${category.id} needs at least 5 guides, found ${count}.`)
+}
+
 const manifest = JSON.parse(await readFile('manifest.webmanifest', 'utf8'))
 if (manifest.id !== '/dom/') throw new Error('PWA manifest must keep the Dom project identity.')
 if (manifest.start_url !== '/dom/#/home' || manifest.scope !== '/') {
@@ -54,4 +74,9 @@ const sw = await readFile('sw.js', 'utf8')
 if (!sw.includes('self.registration.scope')) throw new Error('Service worker must derive its base path from registration scope.')
 if (!sw.includes('appShellFallback')) throw new Error('Service worker navigation fallback is missing.')
 
-console.log('Dom premium React checks passed.')
+const styles = await readFile('src/styles.css', 'utf8')
+for (const contrastToken of ['--contrast-light-ink', '--contrast-light-muted', '--contrast-dark-ink', '.split-showcase .button-dark > span']) {
+  if (!styles.includes(contrastToken)) throw new Error(`Contrast guardrail missing: ${contrastToken}`)
+}
+
+console.log(`Dom premium React checks passed: ${DOM_CATEGORIES.length} categories, ${DOM_GUIDES.length} guides.`)
