@@ -1,5 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import '@fontsource-variable/commissioner/wght.css'
+import '@fontsource-variable/unbounded/wght.css'
+import 'iconoir/css/iconoir.css'
 import { DOM_CATEGORIES, DOM_GUIDES, DOM_CATEGORY_BY_ID, DOM_GUIDE_BY_ID } from '../content.js'
 import './styles.css'
 
@@ -89,46 +92,51 @@ function Link({ href, className = '', children, onClick, ...props }) {
   )
 }
 
-const iconPaths = {
-  home: ['M3 10.5 12 3l9 7.5', 'M5 9.8V21h14V9.8', 'M9 21v-7h6v7'],
-  grid: ['M4 4h6v6H4z', 'M14 4h6v6h-6z', 'M4 14h6v6H4z', 'M14 14h6v6h-6z'],
-  search: ['M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z', 'm21 21-4.35-4.35'],
-  calc: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z', 'M7 7h10', 'M8 12h.01', 'M12 12h.01', 'M16 12h.01', 'M8 16h.01', 'M12 16h.01', 'M16 16h.01'],
-  bookmark: ['M6 3h12v18l-6-4-6 4z'],
-  hammer: ['m14 5 5 5', 'm3 21 8.5-8.5', 'm11 3 8 8', 'm9 5 2-2 8 8-2 2z'],
-  arrow: ['M5 12h14', 'm13 6 6 6-6 6'],
-  spark: ['m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z', 'm19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z'],
-  play: ['M8 5v14l11-7z'],
-  layers: ['m12 2 9 5-9 5-9-5z', 'm3 12 9 5 9-5', 'm3 17 9 5 9-5'],
-  cube: ['m12 2 9 5-9 5-9-5 9-5Z', 'm3 7 9 5 9-5', 'M12 12v10'],
-  ruler: ['M4 19 19 4l2 2L6 21z', 'm14 7 3 3', 'm11 10 2 2', 'm8 13 3 3'],
-  bulb: ['M9 18h6', 'M10 22h4', 'M8.5 14.5A6 6 0 1 1 15.5 14.5c-.8.7-1.5 1.5-1.5 3.5h-4c0-2-.7-2.8-1.5-3.5Z'],
-  menu: ['M4 7h16', 'M4 12h16', 'M4 17h16'],
-  close: ['m6 6 12 12', 'm18 6-12 12'],
-  chevron: ['m9 18 6-6-6-6'],
-  check: ['m5 12 4 4L19 6'],
-  warning: ['M12 3 2 21h20L12 3Z', 'M12 9v4', 'M12 17h.01'],
-  clock: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z', 'M12 6v6l4 2'],
-  heart: ['M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z'],
-  project: ['M4 5h16v14H4z', 'M8 5v14', 'M8 11h12'],
-  user: ['M20 21a8 8 0 0 0-16 0', 'M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z'],
-  mic: ['M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z', 'M19 10v2a7 7 0 0 1-14 0v-2', 'M12 19v3'],
+const ICON_NAMES = {
+  home: 'home-alt-slim',
+  grid: 'component',
+  search: 'input-search',
+  calc: 'calculator',
+  bookmark: 'bookmark-book',
+  hammer: 'hammer',
+  arrow: 'arrow-right',
+  spark: 'circle-spark',
+  play: 'play',
+  layers: 'book-stack',
+  cube: 'cube',
+  ruler: 'ruler-combine',
+  bulb: 'light-bulb-on',
+  menu: 'menu-scale',
+  close: 'xmark',
+  chevron: 'nav-arrow-right',
+  check: 'check-circle',
+  warning: 'warning-triangle',
+  clock: 'clock',
+  heart: 'heart',
+  project: 'project-curve-3d',
+  user: 'profile-circle',
+  mic: 'microphone-speaking',
 }
 
-function Icon({ name, size = 20, strokeWidth = 1.8, className = '' }) {
-  const paths = iconPaths[name] || iconPaths.grid
+function Icon({ name, size = 20, className = '' }) {
   return (
-    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {paths.map((path, i) => <path key={i} d={path} />)}
-    </svg>
+    <i
+      className={`dom-icon iconoir-${ICON_NAMES[name] || ICON_NAMES.grid} ${className}`}
+      style={{ fontSize: size }}
+      aria-hidden="true"
+    />
   )
 }
 
 function Logo({ compact = false }) {
   return (
     <Link href="#/home" className={`logo ${compact ? 'logo--compact' : ''}`} aria-label="Дом — на главную">
-      <span className="logo__mark"><span>⌂</span></span>
-      <span className="logo__copy"><strong>Дом</strong>{!compact && <small>строим проще</small>}</span>
+      <span className="logo__mark" aria-hidden="true">
+        <i className="logo__roof" />
+        <i className="logo__wall" />
+        <i className="logo__axis" />
+      </span>
+      <span className="logo__copy"><strong>ДОМ</strong>{!compact && <small>практика ремонта</small>}</span>
     </Link>
   )
 }
