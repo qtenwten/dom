@@ -5,3 +5,43 @@
 @media(max-width:600px){.planner-page{padding-left:0;padding-right:0;background:#efebe2}.planner-topbar{padding:0 12px}.planner-project-name{font-size:34px}.planner-top-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}.planner-tabs{border-left:0;border-right:0}.planner-tabs__summary{display:none}.planner-workspace{border-left:0;border-right:0}.planner-object-list{grid-template-columns:1fr}.planner-stage-toolbar{align-items:flex-start;flex-wrap:wrap}.planner-canvas,.planner-svg{min-height:430px}.planner-fields,.planner-fields.compact{grid-template-columns:1fr 1fr}.planner-report,.planner-readiness{padding:18px 10px}.planner-kpis{grid-template-columns:1fr 1fr}.material-row{grid-template-columns:minmax(0,1fr) auto 120px}.material-row>b{display:none}.readiness-score{align-items:flex-start;flex-direction:column}.planner-toast{left:10px;right:10px;bottom:84px}}
 @media(max-width:390px){.planner-fields,.planner-fields.compact{grid-template-columns:1fr}.view-switch button{padding:0 10px}.planner-project-name{font-size:30px}}
 @media(prefers-reduced-motion:reduce){.iso-face{transition:none}}
+
+
+/* DOM CAD visual system v2 */
+.planner-stage{background:#d7d2c8}
+.planner-canvas{background:#e7e2d8}
+.planner-svg{background:#e7e2d8}
+.planner-paper{fill:#e7e2d8}
+.grid-small{stroke:rgba(36,39,35,.055);stroke-width:.8}
+.grid-large{stroke:rgba(36,39,35,.12);stroke-width:1}
+.floor-pattern-line{fill:none;stroke:#a99b84;stroke-width:1;opacity:.42}
+.floor-pattern-line.faint{opacity:.24}
+.screed-dot{fill:#a7a7a2;opacity:.32}
+.plan-room{stroke:none;cursor:grab;transition:opacity .15s ease}
+.plan-room:hover{opacity:.92}
+.plan-room.active{filter:saturate(1.03)}
+.plan-room-name,.plan-room-area{paint-order:stroke;stroke:#f7f4ed;stroke-width:7px;stroke-linejoin:round}
+.plan-room-name{fill:#20241f;font:700 18px/1 "Commissioner Variable",sans-serif}
+.plan-room-area{fill:#676b64;font:500 11px/1 "Unbounded Variable",sans-serif}
+.plan-wall{stroke:#333833;stroke-linecap:square;stroke-linejoin:miter}
+.plan-wall.active{stroke:#bd8127!important}
+.plan-wall-hit,.free-wall-hit{stroke:transparent;stroke-width:34;cursor:pointer}
+.plan-opening-cut{stroke:#e7e2d8;stroke-width:22;pointer-events:none}
+.plan-window line:not(.plan-opening-cut){stroke:#70959d;stroke-width:3;pointer-events:none}
+.plan-door-leaf{stroke:#5c625c;stroke-width:3;pointer-events:none}
+.plan-door-swing{fill:none;stroke:#8b8f88;stroke-width:1.5;stroke-dasharray:5 5;pointer-events:none}
+.plan-dimension-set{fill:#8a6528;stroke:#ae9366;stroke-width:1;pointer-events:none}
+.plan-dimension-set text{stroke:none;fill:#805d24;font:500 10px/1 "Unbounded Variable",sans-serif}
+.free-wall-line{stroke:#363a36;stroke-linecap:square}
+.free-wall-line.active{stroke:#bd8127!important}
+.plan-dimension{paint-order:stroke;stroke:#e7e2d8;stroke-width:6px;fill:#795c2d;font:500 10px/1 "Unbounded Variable",sans-serif}
+
+.planner-three{position:relative;width:100%;height:100%;min-height:620px;overflow:hidden;background:#e7e3d9;touch-action:none}
+.planner-three canvas{display:block;width:100%;height:100%;outline:none}
+.planner-three__legend{position:absolute;z-index:2;left:16px;top:16px;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
+.planner-three__legend span{padding:6px 8px;border:1px solid rgba(22,25,22,.13);background:rgba(248,245,238,.86);backdrop-filter:blur(8px);color:#666a63;font:500 8px/1 "Unbounded Variable",sans-serif;box-shadow:0 5px 16px rgba(20,23,20,.05)}
+.view-switch button.active{box-shadow:inset 0 -2px #d49b3e}
+.planner-scale{border-radius:2px;backdrop-filter:blur(8px)}
+@media(max-width:1180px){.planner-three{min-height:560px}}
+@media(max-width:900px){.planner-three{min-height:520px}}
+@media(max-width:600px){.planner-three{min-height:430px}.planner-three__legend{left:10px;top:10px}.planner-three__legend span:nth-child(n+2){display:none}}

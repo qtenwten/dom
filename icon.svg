@@ -1,8 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Дом">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffd36a"/><stop offset="1" stop-color="#e89b24"/></linearGradient></defs>
-  <rect width="512" height="512" rx="116" fill="#111412"/>
-  <path d="M104 244 256 116l152 128v154c0 22-18 40-40 40H144c-22 0-40-18-40-40V244Z" fill="url(#g)"/>
-  <path d="M185 246h142v192H185z" fill="#f8f5ed"/>
-  <path d="M224 296h64v142h-64z" fill="#111412"/>
-  <circle cx="274" cy="369" r="7" fill="#ffd36a"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#171b18"/>
+      <stop offset="1" stop-color="#0d100e"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#e6bc68"/>
+      <stop offset="1" stop-color="#b97820"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="74" y="74" width="364" height="364" rx="36" fill="none" stroke="url(#gold)" stroke-width="10"/>
+  <path d="M126 340V182L256 112l130 70v158" fill="none" stroke="#f5f2e9" stroke-width="18" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M126 340h260M206 340V230h98v110M304 268h82" fill="none" stroke="#f5f2e9" stroke-width="18" stroke-linecap="square"/>
+  <path d="M206 230h98" fill="none" stroke="url(#gold)" stroke-width="12"/>
+  <circle cx="280" cy="290" r="7" fill="#d69d3f"/>
 </svg>

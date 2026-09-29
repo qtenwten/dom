@@ -137,6 +137,24 @@ const ICON_NAMES = {
   mic: 'microphone-speaking',
 }
 
+const ROOM_ICON_NAMES = {
+  kitchen: 'layers',
+  bathroom: 'spark',
+  toilet: 'home',
+  hall: 'project',
+  living: 'home',
+  bedroom: 'home',
+  kids: 'spark',
+  office: 'grid',
+  laundry: 'layers',
+  balcony: 'project',
+  utility: 'hammer',
+}
+
+function RoomIcon({ id, size = 18 }) {
+  return <Icon name={ROOM_ICON_NAMES[id] || 'home'} size={size} />
+}
+
 function Icon({ name, size = 20, className = '' }) {
   return (
     <i
@@ -434,7 +452,7 @@ function ProjectShowcase() {
         </div>
         <aside className="rooms-panel">
           <div className="rooms-tabs"><button>Этажи</button><button>2D план</button><button className="active">3D вид</button></div>
-          <div className="mini-plan"><span /><span /><span /><span /></div>
+          <FloorPlan compact />
           <strong>Список помещений</strong>
           {[
             ['Гостиная', '18.2 м²'], ['Кухня', '10.4 м²'], ['Спальня', '12.5 м²'], ['Ванная', '4.8 м²'], ['Прихожая', '6.1 м²'], ['Балкон', '3.6 м²'],
@@ -445,16 +463,98 @@ function ProjectShowcase() {
   )
 }
 
-function FloorPlan() {
+function FloorPlan({ compact = false }) {
   return (
-    <div className="floor-plan" aria-label="Интерактивный макет квартиры">
-      <div className="room room--bed"><span>Спальня<small>12.5 м²</small></span><i className="bed" /></div>
-      <div className="room room--living"><span>Гостиная<small>18.2 м²</small></span><i className="sofa" /></div>
-      <div className="room room--bath"><span>Ванная<small>4.8 м²</small></span><i className="bath" /></div>
-      <div className="room room--hall"><span>Прихожая<small>6.1 м²</small></span></div>
-      <div className="room room--kitchen"><span>Кухня<small>10.4 м²</small></span><i className="table" /></div>
-      <div className="room room--balcony"><span>Балкон<small>3.6 м²</small></span></div>
-      {[1,2,3,4,5,6,7].map((n) => <button className={`plan-pin pin-${n}`} key={n} aria-label={`Точка ${n}`}><span /></button>)}
+    <div className={'floor-plan ' + (compact ? 'floor-plan--compact' : '')} aria-label="Архитектурный план квартиры">
+      <svg className="floor-plan-svg" viewBox="0 0 760 540" role="img" aria-label="План квартиры с помещениями, дверями, окнами и мебелью">
+        <defs>
+          <pattern id="fp-wood" width="58" height="18" patternUnits="userSpaceOnUse">
+            <rect width="58" height="18" fill="#ded3bd" />
+            <path d="M0 0H58M0 18H58M29 0V18" stroke="#c4b79d" strokeWidth="1" opacity=".55" />
+          </pattern>
+          <pattern id="fp-tile" width="30" height="30" patternUnits="userSpaceOnUse">
+            <rect width="30" height="30" fill="#d9dedb" />
+            <path d="M30 0H0V30" fill="none" stroke="#bcc6c2" strokeWidth="1" />
+          </pattern>
+          <pattern id="fp-stone" width="42" height="42" patternUnits="userSpaceOnUse">
+            <rect width="42" height="42" fill="#d9cdb9" />
+            <path d="M0 21H42M21 0V42" stroke="#c8b9a1" strokeWidth=".8" opacity=".55" />
+          </pattern>
+          <filter id="fp-shadow" x="-20%" y="-20%" width="140%" height="150%">
+            <feDropShadow dx="0" dy="12" stdDeviation="13" floodColor="#141712" floodOpacity=".15" />
+          </filter>
+        </defs>
+
+        <g filter="url(#fp-shadow)">
+          <path className="fp-slab" d="M42 42H682V426H700V508H360V426H42Z" />
+          <rect className="fp-room-fill" x="52" y="52" width="188" height="208" fill="url(#fp-wood)" />
+          <rect className="fp-room-fill" x="240" y="52" width="262" height="208" fill="url(#fp-wood)" />
+          <rect className="fp-room-fill" x="502" y="52" width="168" height="364" fill="url(#fp-stone)" />
+          <rect className="fp-room-fill" x="52" y="260" width="188" height="156" fill="url(#fp-tile)" />
+          <rect className="fp-room-fill" x="240" y="260" width="262" height="156" fill="url(#fp-stone)" />
+          <rect className="fp-room-fill" x="370" y="416" width="320" height="82" fill="url(#fp-stone)" />
+
+          <g className="fp-walls">
+            <path d="M47 47H675V421H695V503H365V421H47Z" />
+            <path d="M240 47V421M502 47V421M47 260H502M365 421V503" />
+          </g>
+
+          <g className="fp-windows">
+            <path d="M105 47H184M300 47H405M675 112V202" />
+            <path d="M105 42H184M300 42H405M680 112V202" />
+          </g>
+
+          <g className="fp-doors">
+            <path className="fp-door-cut" d="M240 164V222M502 292V350M167 260H220M365 421H423" />
+            <path className="fp-door-leaf" d="M240 164H182M502 292H444M167 260V313M365 421V479" />
+            <path className="fp-door-swing" d="M240 222A58 58 0 0 0 182 164M502 350A58 58 0 0 0 444 292M220 260A53 53 0 0 1 167 313M423 421A58 58 0 0 0 365 479" />
+          </g>
+
+          <g className="fp-furniture">
+            <g className="fp-bed">
+              <rect x="82" y="92" width="126" height="108" rx="10" />
+              <rect x="92" y="104" width="48" height="28" rx="6" />
+              <rect x="150" y="104" width="48" height="28" rx="6" />
+              <path d="M82 144H208" />
+            </g>
+            <g className="fp-sofa">
+              <rect x="300" y="144" width="142" height="52" rx="13" />
+              <path d="M318 144V196M424 144V196M300 166H442" />
+            </g>
+            <g className="fp-bath">
+              <rect x="80" y="292" width="126" height="70" rx="30" />
+              <circle cx="185" cy="327" r="5" />
+              <rect x="79" y="376" width="58" height="25" rx="5" />
+            </g>
+            <g className="fp-kitchen">
+              <path d="M528 78H646V112H562V235H528Z" />
+              <circle cx="610" cy="300" r="38" />
+              <circle cx="610" cy="300" r="12" />
+              <path d="M610 250V236M610 364V350M560 300H546M674 300H660" />
+            </g>
+            <g className="fp-hall">
+              <rect x="286" y="294" width="90" height="34" rx="6" />
+              <path d="M286 339H450" />
+            </g>
+          </g>
+
+          <g className="fp-labels">
+            <g transform="translate(145 226)"><text>Спальня</text><text className="fp-area" y="17">12.5 м²</text></g>
+            <g transform="translate(370 226)"><text>Гостиная</text><text className="fp-area" y="17">18.2 м²</text></g>
+            <g transform="translate(145 391)"><text>Ванная</text><text className="fp-area" y="17">4.8 м²</text></g>
+            <g transform="translate(370 391)"><text>Прихожая</text><text className="fp-area" y="17">6.1 м²</text></g>
+            <g transform="translate(586 385)"><text>Кухня</text><text className="fp-area" y="17">10.4 м²</text></g>
+            <g transform="translate(527 478)"><text>Балкон</text><text className="fp-area" y="17">3.6 м²</text></g>
+          </g>
+
+          <g className="fp-dimensions">
+            <path d="M52 24V37M240 24V37M52 30H240" />
+            <text x="146" y="25" textAnchor="middle">3.4 м</text>
+            <path d="M25 52H38M25 260H38M31 52V260" />
+            <text x="22" y="160" textAnchor="middle" transform="rotate(-90 22 160)">3.8 м</text>
+          </g>
+        </g>
+      </svg>
     </div>
   )
 }
@@ -497,11 +597,11 @@ function RoomExplorer() {
         <Link href="#/category/surfaces">Все покрытия и стыки <Icon name="arrow" size={16} /></Link>
       </div>
       <div className="room-tabs" role="tablist" aria-label="Помещения">
-        {DOM_ROOMS.map((item) => <button type="button" role="tab" aria-selected={item.id === room.id} className={item.id === room.id ? 'active' : ''} onClick={() => setRoomId(item.id)} key={item.id}><span>{item.icon}</span>{item.title}</button>)}
+        {DOM_ROOMS.map((item) => <button type="button" role="tab" aria-selected={item.id === room.id} className={item.id === room.id ? 'active' : ''} onClick={() => setRoomId(item.id)} key={item.id}><span><RoomIcon id={item.id} size={17} /></span>{item.title}</button>)}
       </div>
       <div className="room-board">
         <aside className="room-board__summary">
-          <span className="room-board__icon">{room.icon}</span>
+          <span className="room-board__icon"><RoomIcon id={room.id} size={25} /></span>
           <div><small>Помещение</small><h3>{room.title}</h3></div>
           <strong>Главные нагрузки</strong>
           <div className="room-demands">{room.demands.map((item) => <span key={item}>{item}</span>)}</div>
@@ -807,7 +907,7 @@ function ProjectPage() {
           {['Обзор', 'Этапы', 'План помещений', 'Список покупок', 'Калькуляторы', 'Документы', 'Заметки', 'Команда', 'Бюджет', 'Галерея'].map((item, i) => <button className={i === 1 ? 'active' : ''} key={item}><Icon name={i === 2 ? 'project' : i === 3 ? 'check' : i === 4 ? 'calc' : 'grid'} size={17} />{item}</button>)}
         </aside>
         <section className="workspace-main"><div className="workspace-tabs"><button>План</button><button>Задачи</button><button>Покупки</button><button>Бюджет</button><button>Файлы</button><button>Заметки</button></div><FloorPlan /><div className="plan-controls"><button><Icon name="ruler" /> Измерения</button><button>−</button><button>+</button></div></section>
-        <aside className="workspace-right"><div className="rooms-tabs"><button>Этажи</button><button>2D план</button><button className="active">3D вид</button></div><div className="mini-plan large"><span /><span /><span /><span /></div><strong>Список помещений <small>(6)</small></strong>{[['Гостиная','18.2 м²'],['Кухня','10.4 м²'],['Спальня','12.5 м²'],['Ванная','4.8 м²'],['Прихожая','6.1 м²'],['Балкон','3.6 м²']].map(([r,a],i)=><button className="workspace-room" key={r}><i style={{ backgroundImage:`url(${[IMAGES.apartment,IMAGES.kitchen,IMAGES.apartment,IMAGES.bathroom,IMAGES.room,IMAGES.apartment][i]})`}}/><span><b>{r}</b><small>{a}</small></span><Icon name="chevron" size={14}/></button>)}</aside>
+        <aside className="workspace-right"><div className="rooms-tabs"><button>Этажи</button><button>2D план</button><button className="active">3D вид</button></div><FloorPlan compact /><strong>Список помещений <small>(6)</small></strong>{[['Гостиная','18.2 м²'],['Кухня','10.4 м²'],['Спальня','12.5 м²'],['Ванная','4.8 м²'],['Прихожая','6.1 м²'],['Балкон','3.6 м²']].map(([r,a],i)=><button className="workspace-room" key={r}><i style={{ backgroundImage:`url(${[IMAGES.apartment,IMAGES.kitchen,IMAGES.apartment,IMAGES.bathroom,IMAGES.room,IMAGES.apartment][i]})`}}/><span><b>{r}</b><small>{a}</small></span><Icon name="chevron" size={14}/></button>)}</aside>
       </div>
     </main>
   )
