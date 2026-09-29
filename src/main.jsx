@@ -775,6 +775,12 @@ function GuidePage({ id }) {
   const heroImage = CATEGORY_IMAGE_BY_ID[guide.category] || (id.includes('socket') ? IMAGES.electrical : id.includes('door') ? IMAGES.wood : IMAGES.drywall)
   const practical = getGuidePracticalDetail(guide)
   const shopping = getLemanaShopping(guide)
+  const guideSupplyText = normalize([...guide.tools, ...guide.materials, guide.title, guide.summary].join(' '))
+  const relatedSupplies = DOM_SUPPLIES.map((item) => {
+    const terms = [item.title, ...(item.aliases || [])].map(normalize).filter((x) => x.length > 2)
+    const score = terms.reduce((sum, term) => sum + (guideSupplyText.includes(term) ? 5 : term.split(' ').some((word) => word.length > 3 && guideSupplyText.includes(word)) ? 1 : 0), 0)
+    return { item, score }
+  }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 8).map((x) => x.item)
   return (
     <main className="page guide-page">
       <div className="guide-breadcrumb"><Link href="#/home">Главная</Link><span>›</span><Link href={`#/category/${guide.category}`}>{category?.title || 'Раздел'}</Link><span>›</span><b>{guide.title}</b></div>
@@ -823,6 +829,10 @@ function GuidePage({ id }) {
               </article>
             ))}
           </section>
+          {relatedSupplies.length ? <section className="guide-supply-kit" data-reveal>
+            <div className="shopping-section__head"><div><span className="overline">Инструмент и расходники</span><h2>Что понадобится для этой работы</h2></div><p>Позиции связаны с нашей собственной базой: открой карточку, чтобы посмотреть назначение, совместимость, порядок работы и варианты в Лемана ПРО.</p></div>
+            <div className="guide-supply-kit__grid">{relatedSupplies.map((item) => <Link href={`#/supplies/${item.id}`} key={item.id}><img src={item.image} alt="" loading="lazy" /><div><small>{SUPPLY_KINDS[item.kind]}</small><strong>{item.title}</strong><span>Инструкция и подбор <Icon name="arrow" size={13} /></span></div></Link>)}</div>
+          </section> : null}
           <section id="shopping" className="shopping-section" data-reveal>
             <div className="shopping-section__head">
               <div><span className="overline">Что купить</span><h2>Подходящие товары в Лемана ПРО</h2></div>
@@ -877,6 +887,8 @@ function InfoList({ title, items, icon }) {
 function normalize(value) {
   return String(value || '').toLocaleLowerCase('ru').replaceAll('ё', 'е').replace(/[^\p{L}\p{N}\s-]+/gu, ' ').replace(/\s+/g, ' ').trim()
 }
+
+const SUPPLY_SEARCH_INDEX = DOM_SUPPLIES.map((item) => ({ item, text: normalize([item.title, item.summary, ...(item.aliases || []), ...(item.useFor || []), ...(item.compatibility || [])].join(' ')) }))
 
 const SEARCH_INDEX = DOM_GUIDES.map((guide) => { const shopping = getLemanaShopping(guide); return { guide, text: normalize([guide.title, guide.summary, guide.task, guide.material, ...guide.tags, ...guide.tools, ...guide.materials, ...shopping.map((item) => item.title + ' ' + item.kind)].join(' ')) } })
 
