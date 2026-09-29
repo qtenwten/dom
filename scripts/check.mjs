@@ -19,8 +19,10 @@ for (const file of ['content.js', 'sw.js']) {
 }
 
 
-const { DOM_CATEGORIES, DOM_GUIDES } = await import('../content.js')
-if (DOM_CATEGORIES.length < 12) throw new Error(`Expected at least 12 primary categories, found ${DOM_CATEGORIES.length}.`)
+const { DOM_CATEGORIES, DOM_GUIDES, DOM_SOURCES } = await import('../content.js')
+if (DOM_CATEGORIES.length < 13) throw new Error(`Expected at least 13 primary categories, found ${DOM_CATEGORIES.length}.`)
+if (DOM_GUIDES.length < 100) throw new Error(`Research corpus unexpectedly small: ${DOM_GUIDES.length} guides.`)
+if (Object.keys(DOM_SOURCES).length < 20) throw new Error('Source library unexpectedly small.')
 
 const categoryIds = new Set(DOM_CATEGORIES.map((category) => category.id))
 const guideIds = new Set()
@@ -30,6 +32,13 @@ for (const guide of DOM_GUIDES) {
   guideIds.add(guide.id)
   if (!guide.summary || !Array.isArray(guide.steps) || guide.steps.length < 5) {
     throw new Error(`Guide ${guide.id} is missing a summary or a complete step sequence.`)
+  }
+  if (!Array.isArray(guide.sources) || guide.sources.length === 0) {
+    throw new Error(`Guide ${guide.id} has no research sources.`)
+  }
+  for (const source of guide.sources) {
+    if (!source.url?.startsWith('https://')) throw new Error(`Guide ${guide.id} has an invalid source URL.`)
+    if (!source.publisher || !source.type || !source.scope) throw new Error(`Guide ${guide.id} has incomplete source metadata.`)
   }
 }
 
@@ -79,4 +88,4 @@ for (const contrastToken of ['--contrast-light-ink', '--contrast-light-muted', '
   if (!styles.includes(contrastToken)) throw new Error(`Contrast guardrail missing: ${contrastToken}`)
 }
 
-console.log(`Dom premium React checks passed: ${DOM_CATEGORIES.length} categories, ${DOM_GUIDES.length} guides.`)
+console.log(`Dom premium React checks passed: ${DOM_CATEGORIES.length} categories, ${DOM_GUIDES.length} guides, ${Object.keys(DOM_SOURCES).length} research sources.`)
