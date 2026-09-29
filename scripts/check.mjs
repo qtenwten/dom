@@ -6,6 +6,8 @@ const required = [
   '404.html',
   'src/main.jsx',
   'src/styles.css',
+  'src/planner.jsx',
+  'src/planner.css',
   'content.js',
   'surface-content.js',
   'guide-enrichment.js',
@@ -82,7 +84,7 @@ const fallback = await readFile('404.html', 'utf8')
 if (!fallback.includes('/dom/#/home')) throw new Error('404 fallback must recover the Dom app route.')
 
 const source = await readFile('src/main.jsx', 'utf8')
-for (const feature of ['createRoot', 'document.startViewTransition', 'IntersectionObserver', 'CommandPalette', 'BottomNav']) {
+for (const feature of ['createRoot', 'document.startViewTransition', 'IntersectionObserver', 'CommandPalette', 'BottomNav', 'PlannerPage']) {
   if (!source.includes(feature)) throw new Error(`Premium React feature missing: ${feature}`)
 }
 
