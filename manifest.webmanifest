@@ -1,9 +1,10 @@
 {
+  "id": "./",
   "name": "Дом — ремонт и строительство",
   "short_name": "Дом",
   "description": "Пошаговый справочник, проекты и калькуляторы для ремонта и строительства.",
   "lang": "ru",
-  "start_url": "./",
+  "start_url": "./#/home",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
