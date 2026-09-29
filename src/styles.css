@@ -1671,3 +1671,152 @@ h1, h2, h3,
     padding-bottom: calc(58px + env(safe-area-inset-bottom));
   }
 }
+
+
+/* Contrast guardrails: explicit foregrounds for every major light/dark surface.
+   These live last on purpose so mobile cascade changes cannot create light-on-light text. */
+:root {
+  --contrast-light-ink: #171a18;
+  --contrast-light-muted: #5f645f;
+  --contrast-light-accent: #8b5d16;
+  --contrast-dark-ink: #f5f2ea;
+  --contrast-dark-muted: #b8bcb6;
+}
+
+.split-showcase,
+.page,
+.project-canvas-wrap,
+.rooms-panel,
+.calculator-main,
+.guide-list-card,
+.rich-step,
+.info-list,
+.empty-premium {
+  color: var(--contrast-light-ink);
+}
+
+.split-showcase .showcase-copy h2,
+.split-showcase .feature-list strong,
+.split-showcase .feature-list small,
+.split-showcase .showcase-copy > p {
+  color: var(--contrast-light-ink);
+}
+
+.split-showcase .showcase-copy > p,
+.split-showcase .feature-list small {
+  color: var(--contrast-light-muted);
+}
+
+.split-showcase .overline {
+  color: var(--contrast-light-accent);
+}
+
+.split-showcase .button-dark > span {
+  background: #0d100f;
+  color: #ffffff;
+}
+
+.project-showcase,
+.site-header,
+.mobile-drawer,
+.project-sidebar,
+.workspace-nav,
+.command-palette,
+.bottom-app-nav {
+  color: var(--contrast-dark-ink);
+}
+
+.project-showcase .section-title-row.light p,
+.project-sidebar > div,
+.workspace-nav button,
+.command-palette footer,
+.bottom-app-nav a {
+  color: var(--contrast-dark-muted);
+}
+
+.project-sidebar > div.active,
+.workspace-nav button.active,
+.bottom-app-nav a.active {
+  color: var(--amber-2);
+}
+
+@media (max-width: 680px) {
+  .split-showcase {
+    background:
+      linear-gradient(rgba(13,16,15,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(13,16,15,.035) 1px, transparent 1px),
+      #f5f1e8;
+    background-size: 28px 28px;
+    color: var(--contrast-light-ink);
+  }
+
+  .split-showcase .showcase-copy h2,
+  .split-showcase .feature-list strong {
+    color: #171a18;
+  }
+
+  .split-showcase .showcase-copy > p,
+  .split-showcase .feature-list small {
+    color: #5f645f;
+  }
+
+  .split-showcase .button-dark > span {
+    background: #0b0e0d;
+    color: #ffffff;
+  }
+
+  .instruction-preview {
+    background: #202421;
+    color: var(--contrast-dark-ink);
+  }
+
+  .instruction-preview h3,
+  .instruction-preview .preview-steps strong {
+    color: var(--contrast-dark-ink);
+  }
+
+  .instruction-preview > p,
+  .instruction-preview__top {
+    color: var(--contrast-dark-muted);
+  }
+
+  .preview-steps > div {
+    background: #2a2f2b;
+    color: var(--contrast-dark-ink);
+  }
+
+  .page,
+  .calculator-main,
+  .guide-list-card,
+  .rich-step,
+  .info-list,
+  .empty-premium,
+  .category-photo {
+    color: var(--contrast-light-ink);
+  }
+
+  .page-intro p,
+  .guide-list-card p,
+  .rich-step p,
+  .info-list__row {
+    color: var(--contrast-light-muted);
+  }
+
+  .quick-tool {
+    color: var(--contrast-dark-ink);
+  }
+
+  .quick-tool small {
+    color: var(--contrast-dark-muted);
+  }
+}
+
+@media (forced-colors: active) {
+  .split-showcase,
+  .instruction-preview,
+  .project-showcase,
+  .quick-tool,
+  .bottom-app-nav {
+    forced-color-adjust: auto;
+  }
+}
