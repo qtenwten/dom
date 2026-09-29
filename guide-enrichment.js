@@ -200,6 +200,36 @@ const PRODUCT_LIBRARY = {
     kind: 'Расходник',
     url: lemanaSearch('лента малярная'),
   },
+  tapeMeasure: {
+    title: 'Рулетка 5 м',
+    spec: 'Для контрольных размеров, привязок скрытых работ и замеров проёмов. Для точной приёмки лучше дублировать критичные размеры вторым измерением.',
+    kind: 'Измерение',
+    url: lemanaSearch('рулетка 5 м'),
+  },
+  laserLevel: {
+    title: 'Лазерный уровень',
+    spec: 'Удобен для единой отметки, вертикалей, каркаса, дверей, потолка и чистых уровней пола.',
+    kind: 'Измерение',
+    url: lemanaSearch('лазерный уровень'),
+  },
+  longRule: {
+    title: 'Правило 2 м',
+    spec: 'Для проверки локальной плоскости стен, пола и каркаса. Допуск оценивай по требованиям следующего покрытия.',
+    kind: 'Измерение',
+    url: lemanaSearch('правило алюминиевое 2 м'),
+  },
+  detector: {
+    title: 'Детектор скрытой проводки и металла',
+    spec: 'Помогает искать профиль, кабель и некоторые трубы перед сверлением. Не является гарантией — используй вместе с планом и визуальными признаками.',
+    kind: 'Безопасность',
+    url: lemanaSearch('детектор скрытой проводки металла'),
+  },
+  moistureMeter: {
+    title: 'Влагомер строительный',
+    spec: 'Для диагностики влажности основания. Метод и допустимые значения зависят от материала и будущего покрытия.',
+    kind: 'Контроль',
+    url: lemanaSearch('влагомер строительный'),
+  },
   floorPrimer: {
     title: 'Грунтовка для пола',
     spec: 'Совместимость с ровнителем/стяжкой важнее бренда; соблюдай расход и время высыхания.',
@@ -388,19 +418,30 @@ const CATEGORY_PRODUCT_IDS = {
 }
 
 const GUIDE_PRODUCT_RULES = [
-  { test: /подрозет|розетк|коронк/i, ids: ['socketBox', 'crown68'] },
+  { test: /подрозет|розетк|коронк/i, ids: ['socketBox', 'crown68', 'detector'] },
   { test: /каркас|перегород|профил/i, ids: ['pn50', 'ps50', 'sealingTape', 'dowelNail640', 'metalScrew13'] },
   { test: /обшив|лист|гипсокартон/i, ids: ['gklStandard', 'drywallScrew25', 'drywallScrew35'] },
   { test: /влаг|ванн|душ|мокр|гидроизол/i, ids: ['gklv', 'waterproofing', 'waterproofTape', 'waterproofCuff', 'tileAdhesive', 'sanitarySealant'] },
   { test: /шв|стык.*гкл|шпаклев.*гипс/i, ids: ['jointFiller', 'paperTape', 'cornerTape', 'sandingMesh'] },
   { test: /плитк/i, ids: ['tilePrimer', 'tileAdhesive', 'grout', 'sanitarySealant'] },
-  { test: /ламинат/i, ids: ['underlay', 'spacers', 'transitionProfile'] },
-  { test: /стяж|налив|ровнител/i, ids: ['floorPrimer', 'leveler', 'damperTape'] },
+  { test: /ламинат/i, ids: ['underlay', 'spacers', 'transitionProfile', 'longRule'] },
+  { test: /стяж|налив|ровнител/i, ids: ['floorPrimer', 'leveler', 'damperTape', 'laserLevel'] },
   { test: /покрас|краск/i, ids: ['finishPutty', 'sandingMesh', 'paintRoller', 'maskingTape'] },
-  { test: /штукатур/i, ids: ['plasterPrimer', 'plaster'] },
-  { test: /двер|окон/i, ids: ['foam', 'wedges', 'windowTape'] },
-  { test: /водост|дренаж/i, ids: ['drainPipe', 'geotextile', 'gravel'] },
+  { test: /штукатур/i, ids: ['plasterPrimer', 'plaster', 'longRule'] },
+  { test: /измер.*(окн|двер)|про[её]м.*измер/i, ids: ['tapeMeasure', 'laserLevel'] },
+  { test: /(окн|двер).*(монтаж|установ|шов)|монтаж.*(окн|двер)/i, ids: ['foam', 'wedges', 'windowTape', 'laserLevel'] },
+  { test: /водост|дренаж/i, ids: ['drainPipe', 'geotextile', 'gravel', 'laserLevel'] },
+  { test: /влажн|протеч|намок|конденсат/i, ids: ['moistureMeter'] },
+  { test: /скрыт|сверл|крепеж|крепёж/i, ids: ['detector'] },
 ]
+
+const TASK_PRODUCT_IDS = {
+  измерить: ['tapeMeasure', 'laserLevel'],
+  проверить: ['tapeMeasure', 'longRule'],
+  диагностировать: ['tapeMeasure', 'detector'],
+  разметить: ['tapeMeasure', 'laserLevel'],
+  спланировать: ['tapeMeasure'],
+}
 
 const CATEGORY_DETAIL = {
   planning: {
@@ -617,17 +658,18 @@ export function getLemanaShopping(guide) {
   for (const rule of GUIDE_PRODUCT_RULES) {
     if (rule.test.test(source)) ids.push(...rule.ids)
   }
-  ids.push(...(CATEGORY_PRODUCT_IDS[guide.category] || []))
+  ids.push(...(TASK_PRODUCT_IDS[guide.task] || []))
 
   const seen = new Set()
   const items = []
-  for (const id of ids) {
+  const addById = (id) => {
     const item = PRODUCT_LIBRARY[id] || VERIFIED[id]
-    if (!item || seen.has(item.title)) continue
+    if (!item || seen.has(item.title) || items.length >= 8) return
     seen.add(item.title)
     items.push({ id, ...item })
-    if (items.length >= 8) break
   }
+
+  ids.forEach(addById)
 
   if (items.length < 4) {
     for (const material of guide.materials || []) {
@@ -641,7 +683,14 @@ export function getLemanaShopping(guide) {
         kind: 'По списку статьи',
         url: lemanaSearch(title),
       })
-      if (items.length >= 6) break
+      if (items.length >= 4) break
+    }
+  }
+
+  if (items.length < 4) {
+    for (const id of CATEGORY_PRODUCT_IDS[guide.category] || []) {
+      addById(id)
+      if (items.length >= 4) break
     }
   }
 
