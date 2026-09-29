@@ -1,23 +1,16 @@
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
-
-const files = [
-  'index.html',
-  'app.js',
-  'content.js',
-  'styles.css',
-  'manifest.webmanifest',
-  'sw.js',
-  'icon.svg',
-]
+import { cp, rm, writeFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
 
 await rm('dist', { recursive: true, force: true })
-await mkdir('dist', { recursive: true })
 
-for (const file of files) {
+const vite = process.platform === 'win32' ? 'node_modules/.bin/vite.cmd' : 'node_modules/.bin/vite'
+const result = spawnSync(vite, ['build', '--base=./'], { stdio: 'inherit' })
+if (result.status !== 0) process.exit(result.status ?? 1)
+
+for (const file of ['manifest.webmanifest', 'sw.js', 'icon.svg']) {
   await cp(file, `dist/${file}`)
 }
 
 await writeFile('dist/.nojekyll', '')
 await writeFile('dist/source-version.txt', `${process.env.GITHUB_SHA || 'local'}\n`)
-
-console.log(`Built ${files.length} runtime files into dist/.`)
+console.log('Built premium React app into dist/.')

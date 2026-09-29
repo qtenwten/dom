@@ -1,0 +1,752 @@
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createRoot } from 'react-dom/client'
+import { DOM_CATEGORIES, DOM_GUIDES, DOM_CATEGORY_BY_ID, DOM_GUIDE_BY_ID } from '../content.js'
+import './styles.css'
+
+const STORAGE_KEY = 'qsen-dom:saved'
+const SEARCH_KEY = 'qsen-dom:last-search'
+const PROJECT_KEY = 'qsen-dom:project-progress'
+
+const IMAGES = {
+  hero: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=2200&q=88',
+  apartment: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1200&q=85',
+  bathroom: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1200&q=85',
+  kitchen: 'https://images.unsplash.com/photo-1556911220-bff31c812dba?auto=format&fit=crop&w=1200&q=85',
+  electrical: 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?auto=format&fit=crop&w=1200&q=85',
+  tools: 'https://images.unsplash.com/photo-1581147036324-c1c89c2c8b5c?auto=format&fit=crop&w=1200&q=85',
+  drywall: 'https://images.unsplash.com/photo-1590725121839-892b458a74fe?auto=format&fit=crop&w=1200&q=85',
+  wood: 'https://images.unsplash.com/photo-1531835551805-16d864c8d311?auto=format&fit=crop&w=1200&q=85',
+  room: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=1200&q=85',
+}
+
+const CATEGORY_ART = [IMAGES.drywall, IMAGES.wood, IMAGES.room, IMAGES.electrical, IMAGES.bathroom, IMAGES.kitchen, IMAGES.tools, IMAGES.apartment]
+
+const NavigationContext = createContext(null)
+
+function parseRoute(hash = window.location.hash) {
+  const bits = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
+  if (!bits.length || bits[0] === 'home') return { view: 'home', key: 'home' }
+  if (bits[0] === 'category' && bits[1]) return { view: 'category', id: bits[1], key: `category-${bits[1]}` }
+  if (bits[0] === 'guide' && bits[1]) return { view: 'guide', id: bits[1], key: `guide-${bits[1]}` }
+  if (['catalog', 'search', 'calculator', 'saved', 'project'].includes(bits[0])) return { view: bits[0], key: bits[0] }
+  return { view: 'home', key: 'home' }
+}
+
+function NavigationProvider({ children }) {
+  const [route, setRoute] = useState(() => parseRoute())
+
+  useEffect(() => {
+    const update = () => setRoute(parseRoute())
+    window.addEventListener('hashchange', update)
+    window.addEventListener('popstate', update)
+    if (!window.location.hash) history.replaceState(null, '', '#/home')
+    return () => {
+      window.removeEventListener('hashchange', update)
+      window.removeEventListener('popstate', update)
+    }
+  }, [])
+
+  const navigate = useCallback((href) => {
+    if (!href?.startsWith('#/')) return
+    if (href === window.location.hash) return
+    const commit = () => {
+      history.pushState(null, '', href)
+      setRoute(parseRoute(href))
+      window.scrollTo({ top: 0, behavior: 'instant' })
+    }
+    if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.startViewTransition(commit)
+    } else {
+      commit()
+    }
+  }, [])
+
+  return <NavigationContext.Provider value={{ route, navigate }}>{children}</NavigationContext.Provider>
+}
+
+function useNavigation() {
+  return useContext(NavigationContext)
+}
+
+function Link({ href, className = '', children, onClick, ...props }) {
+  const { navigate } = useNavigation()
+  return (
+    <a
+      href={href}
+      className={className}
+      onClick={(event) => {
+        onClick?.(event)
+        if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return
+        if (href?.startsWith('#/')) {
+          event.preventDefault()
+          navigate(href)
+        }
+      }}
+      {...props}
+    >
+      {children}
+    </a>
+  )
+}
+
+const iconPaths = {
+  home: ['M3 10.5 12 3l9 7.5', 'M5 9.8V21h14V9.8', 'M9 21v-7h6v7'],
+  grid: ['M4 4h6v6H4z', 'M14 4h6v6h-6z', 'M4 14h6v6H4z', 'M14 14h6v6h-6z'],
+  search: ['M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z', 'm21 21-4.35-4.35'],
+  calc: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z', 'M7 7h10', 'M8 12h.01', 'M12 12h.01', 'M16 12h.01', 'M8 16h.01', 'M12 16h.01', 'M16 16h.01'],
+  bookmark: ['M6 3h12v18l-6-4-6 4z'],
+  hammer: ['m14 5 5 5', 'm3 21 8.5-8.5', 'm11 3 8 8', 'm9 5 2-2 8 8-2 2z'],
+  arrow: ['M5 12h14', 'm13 6 6 6-6 6'],
+  spark: ['m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z', 'm19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z'],
+  play: ['M8 5v14l11-7z'],
+  layers: ['m12 2 9 5-9 5-9-5z', 'm3 12 9 5 9-5', 'm3 17 9 5 9-5'],
+  cube: ['m12 2 9 5-9 5-9-5 9-5Z', 'm3 7 9 5 9-5', 'M12 12v10'],
+  ruler: ['M4 19 19 4l2 2L6 21z', 'm14 7 3 3', 'm11 10 2 2', 'm8 13 3 3'],
+  bulb: ['M9 18h6', 'M10 22h4', 'M8.5 14.5A6 6 0 1 1 15.5 14.5c-.8.7-1.5 1.5-1.5 3.5h-4c0-2-.7-2.8-1.5-3.5Z'],
+  menu: ['M4 7h16', 'M4 12h16', 'M4 17h16'],
+  close: ['m6 6 12 12', 'm18 6-12 12'],
+  chevron: ['m9 18 6-6-6-6'],
+  check: ['m5 12 4 4L19 6'],
+  warning: ['M12 3 2 21h20L12 3Z', 'M12 9v4', 'M12 17h.01'],
+  clock: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z', 'M12 6v6l4 2'],
+  heart: ['M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z'],
+  project: ['M4 5h16v14H4z', 'M8 5v14', 'M8 11h12'],
+  user: ['M20 21a8 8 0 0 0-16 0', 'M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z'],
+  mic: ['M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z', 'M19 10v2a7 7 0 0 1-14 0v-2', 'M12 19v3'],
+}
+
+function Icon({ name, size = 20, strokeWidth = 1.8, className = '' }) {
+  const paths = iconPaths[name] || iconPaths.grid
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {paths.map((path, i) => <path key={i} d={path} />)}
+    </svg>
+  )
+}
+
+function Logo({ compact = false }) {
+  return (
+    <Link href="#/home" className={`logo ${compact ? 'logo--compact' : ''}`} aria-label="Дом — на главную">
+      <span className="logo__mark"><span>⌂</span></span>
+      <span className="logo__copy"><strong>Дом</strong>{!compact && <small>строим проще</small>}</span>
+    </Link>
+  )
+}
+
+function useReveal(routeKey) {
+  useEffect(() => {
+    const nodes = [...document.querySelectorAll('[data-reveal]')]
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      nodes.forEach((node) => node.classList.add('is-visible'))
+      return
+    }
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible')
+          observer.unobserve(entry.target)
+        }
+      })
+    }, { threshold: 0.1, rootMargin: '0px 0px -5% 0px' })
+    nodes.forEach((node, i) => {
+      node.style.setProperty('--reveal-delay', `${Math.min(i * 34, 240)}ms`)
+      observer.observe(node)
+    })
+    return () => observer.disconnect()
+  }, [routeKey])
+}
+
+function useScrollProgress() {
+  const [progress, setProgress] = useState(0)
+  useEffect(() => {
+    let raf = 0
+    const update = () => {
+      raf = 0
+      const total = document.documentElement.scrollHeight - window.innerHeight
+      setProgress(total > 0 ? Math.min(1, Math.max(0, window.scrollY / total)) : 0)
+    }
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update) }
+    update()
+    addEventListener('scroll', onScroll, { passive: true })
+    addEventListener('resize', onScroll)
+    return () => {
+      removeEventListener('scroll', onScroll)
+      removeEventListener('resize', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [])
+  return progress
+}
+
+function useTilt() {
+  const ref = useRef(null)
+  const onPointerMove = (event) => {
+    if (window.matchMedia('(pointer: coarse)').matches) return
+    const el = ref.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const px = (event.clientX - rect.left) / rect.width - 0.5
+    const py = (event.clientY - rect.top) / rect.height - 0.5
+    el.style.setProperty('--rx', `${py * -4}deg`)
+    el.style.setProperty('--ry', `${px * 5}deg`)
+    el.style.setProperty('--mx', `${(px + 0.5) * 100}%`)
+    el.style.setProperty('--my', `${(py + 0.5) * 100}%`)
+  }
+  const onPointerLeave = () => {
+    if (!ref.current) return
+    ref.current.style.setProperty('--rx', '0deg')
+    ref.current.style.setProperty('--ry', '0deg')
+  }
+  return { ref, onPointerMove, onPointerLeave }
+}
+
+function TiltCard({ children, className = '', ...props }) {
+  const tilt = useTilt()
+  return <div className={`tilt ${className}`} {...tilt} {...props}>{children}</div>
+}
+
+function MagneticButton({ href, children, className = '', icon = true }) {
+  const ref = useRef(null)
+  const onMove = (event) => {
+    if (window.matchMedia('(pointer: coarse)').matches) return
+    const el = ref.current
+    const rect = el.getBoundingClientRect()
+    const x = (event.clientX - rect.left - rect.width / 2) * 0.09
+    const y = (event.clientY - rect.top - rect.height / 2) * 0.12
+    el.style.transform = `translate3d(${x}px, ${y}px, 0)`
+  }
+  const reset = () => { if (ref.current) ref.current.style.transform = '' }
+  return <Link href={href} className={`magnetic ${className}`}><span ref={ref} onPointerMove={onMove} onPointerLeave={reset}>{children}{icon && <Icon name="arrow" size={17} />}</span></Link>
+}
+
+function SearchField({ query, setQuery, compact = false, autoNavigate = true, onSubmit }) {
+  const { navigate } = useNavigation()
+  return (
+    <form className={`search-field ${compact ? 'search-field--compact' : ''}`} onSubmit={(event) => {
+      event.preventDefault()
+      onSubmit?.()
+      if (autoNavigate) navigate('#/search')
+    }}>
+      <Icon name="search" size={compact ? 17 : 20} />
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={compact ? 'Поиск по справочнику…' : 'Например: как установить подрозетник?'} aria-label="Поиск" />
+      {!compact && <kbd>⌘ K</kbd>}
+    </form>
+  )
+}
+
+function Header({ query, setQuery, openPalette }) {
+  const { route } = useNavigation()
+  const progress = useScrollProgress()
+  const [mobileMenu, setMobileMenu] = useState(false)
+  return (
+    <>
+      <header className="site-header">
+        <div className="header-progress" style={{ transform: `scaleX(${progress})` }} />
+        <div className="header-inner">
+          <Logo />
+          <nav className="desktop-nav" aria-label="Разделы сайта">
+            <Link href="#/project" className={route.view === 'project' ? 'active' : ''}>Проекты</Link>
+            <Link href="#/catalog" className={['catalog', 'category', 'guide'].includes(route.view) ? 'active' : ''}>База знаний</Link>
+            <Link href="#/calculator" className={route.view === 'calculator' ? 'active' : ''}>Калькуляторы</Link>
+            <Link href="#/catalog">Материалы</Link>
+            <Link href="#/saved">Идеи</Link>
+          </nav>
+          <div className="header-actions">
+            <button className="icon-button search-trigger" type="button" onClick={openPalette} aria-label="Открыть поиск"><Icon name="search" /></button>
+            <Link href="#/saved" className="icon-button" aria-label="Сохранённое"><Icon name="bookmark" /></Link>
+            <Link href="#/project" className="avatar" aria-label="Мой проект">A</Link>
+            <button className="mobile-menu-button" type="button" onClick={() => setMobileMenu((v) => !v)} aria-expanded={mobileMenu} aria-label="Меню"><Icon name={mobileMenu ? 'close' : 'menu'} /></button>
+          </div>
+        </div>
+      </header>
+      <div className={`mobile-drawer ${mobileMenu ? 'open' : ''}`} aria-hidden={!mobileMenu}>
+        <SearchField query={query} setQuery={setQuery} compact onSubmit={() => setMobileMenu(false)} />
+        <Link href="#/project" onClick={() => setMobileMenu(false)}>Проекты <Icon name="chevron" /></Link>
+        <Link href="#/catalog" onClick={() => setMobileMenu(false)}>База знаний <Icon name="chevron" /></Link>
+        <Link href="#/calculator" onClick={() => setMobileMenu(false)}>Калькуляторы <Icon name="chevron" /></Link>
+        <Link href="#/saved" onClick={() => setMobileMenu(false)}>Сохранённое <Icon name="chevron" /></Link>
+      </div>
+    </>
+  )
+}
+
+function Hero({ query, setQuery }) {
+  return (
+    <section className="hero-premium" data-reveal>
+      <div className="hero-premium__media" style={{ backgroundImage: `url(${IMAGES.hero})` }} />
+      <div className="hero-premium__shade" />
+      <div className="hero-premium__grain" />
+      <div className="hero-premium__content">
+        <span className="eyebrow-dark">Всё для строительства и ремонта</span>
+        <h1>Планируй.<br />Строй.<br /><em>Воплощай.</em></h1>
+        <p>Пошаговые гайды, калькуляторы, подбор материалов, реальные примеры и советы от практиков. Всё в одном месте.</p>
+        <div className="hero-premium__buttons">
+          <MagneticButton href="#/project" className="button-primary">Создать проект</MagneticButton>
+          <Link href="#/guide/drywall-partition-frame" className="button-glass"><Icon name="play" size={17} /> Как это работает?</Link>
+        </div>
+        <div className="hero-search-mobile"><SearchField query={query} setQuery={setQuery} /></div>
+      </div>
+      <TiltCard className="hero-project-card">
+        <div className="hero-project-card__image" style={{ backgroundImage: `url(${IMAGES.apartment})` }} />
+        <div className="hero-project-card__body">
+          <small>Мой проект</small>
+          <strong>Ремонт квартиры 60 м²</strong>
+          <div className="project-stage"><span>Этап: чистовая отделка</span><b>68%</b></div>
+          <div className="progress"><i style={{ width: '68%' }} /></div>
+          <div className="project-team"><span>A</span><span>М</span><span>И</span><span>+12</span><Link href="#/project"><Icon name="arrow" size={17} /></Link></div>
+        </div>
+      </TiltCard>
+      <div className="hero-stats">
+        <div><strong>500+</strong><span>инструкций</span></div>
+        <div><strong>50+</strong><span>калькуляторов</span></div>
+        <div><strong>10 000+</strong><span>товаров</span></div>
+        <div><strong>∞</strong><span>идей для дома</span></div>
+      </div>
+    </section>
+  )
+}
+
+function QuickTools() {
+  const tools = [
+    ['calc', 'Калькуляторы', 'Быстрые расчёты', '#/calculator'],
+    ['layers', 'Материалы', 'Подбор и нормы', '#/catalog'],
+    ['bulb', 'Идеи', 'Решения для комнат', '#/saved'],
+    ['check', 'Чек-листы', 'Работа по шагам', '#/guide/drywall-partition-frame'],
+  ]
+  return (
+    <section className="quick-tools" data-reveal>
+      {tools.map(([icon, title, subtitle, href]) => (
+        <Link key={title} href={href} className="quick-tool">
+          <span><Icon name={icon} /></span>
+          <div><strong>{title}</strong><small>{subtitle}</small></div>
+          <Icon name="chevron" size={16} />
+        </Link>
+      ))}
+    </section>
+  )
+}
+
+function PopularSections() {
+  const fallback = [
+    { title: 'Квартира', description: 'Ремонт под ключ' },
+    { title: 'Ванная', description: 'Гидроизоляция, плитка' },
+    { title: 'Кухня', description: 'Планировка, мебель' },
+    { title: 'Электрика', description: 'Схемы, безопасность' },
+    { title: 'Сантехника', description: 'Монтаж и обслуживание' },
+    { title: 'Потолки', description: 'ГКЛ, освещение' },
+  ]
+  const imgs = [IMAGES.apartment, IMAGES.bathroom, IMAGES.kitchen, IMAGES.electrical, IMAGES.room, IMAGES.drywall]
+  return (
+    <section className="content-section popular-section" data-reveal>
+      <div className="section-title-row"><div><span className="overline">Навигация по задачам</span><h2>Популярные разделы</h2></div><Link href="#/catalog">Смотреть все <Icon name="arrow" size={16} /></Link></div>
+      <div className="popular-scroll">
+        {fallback.map((item, i) => (
+          <TiltCard className="popular-card" key={item.title}>
+            <Link href={i === 3 ? '#/category/drywall' : '#/catalog'}>
+              <img src={imgs[i]} alt="" loading="lazy" />
+              <span className="popular-card__overlay" />
+              <div><strong>{item.title}</strong><small>{item.description}</small></div>
+              <b><Icon name="arrow" size={16} /></b>
+            </Link>
+          </TiltCard>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function KnowledgePreview() {
+  const guide = DOM_GUIDE_BY_ID['drywall-socket-box'] || DOM_GUIDES[0]
+  if (!guide) return null
+  return (
+    <section className="split-showcase" data-reveal>
+      <div className="showcase-copy">
+        <span className="overline">Инструкция, а не статья ради статьи</span>
+        <h2>От вопроса — сразу к правильному действию</h2>
+        <p>На объекте не нужен учебник на сорок страниц. Нужен порядок: что проверить, чем сделать, в какой последовательности и что будет, если уже ошибся.</p>
+        <div className="feature-list">
+          <div><span>01</span><strong>Пошагово</strong><small>Каждый этап отдельно</small></div>
+          <div><span>02</span><strong>Безопасно</strong><small>Предупреждения до начала работ</small></div>
+          <div><span>03</span><strong>Практично</strong><small>Ошибки и способы исправления</small></div>
+        </div>
+        <MagneticButton href={`#/guide/${guide.id}`} className="button-dark">Открыть инструкцию</MagneticButton>
+      </div>
+      <TiltCard className="instruction-preview">
+        <div className="instruction-preview__top">
+          <span className="status-dot">Проверено структурой</span>
+          <span><Icon name="clock" size={15} /> {guide.duration}</span>
+        </div>
+        <h3>{guide.title}</h3>
+        <p>{guide.summary}</p>
+        <div className="instruction-visual" style={{ backgroundImage: `url(${IMAGES.drywall})` }}>
+          <button aria-label="Воспроизвести"><Icon name="play" /></button>
+          <div className="visual-callout">Проверьте, чтобы коронка была на одном уровне</div>
+        </div>
+        <div className="preview-steps">
+          {guide.steps.slice(0, 4).map((step, i) => <div key={step.title}><span>{i + 1}</span><strong>{step.title}</strong><Icon name={i === 0 ? 'check' : 'chevron'} size={16} /></div>)}
+        </div>
+      </TiltCard>
+    </section>
+  )
+}
+
+function ProjectShowcase() {
+  return (
+    <section className="project-showcase" data-reveal>
+      <div className="section-title-row light"><div><span className="overline">Проект в одном месте</span><h2>Ремонт квартиры 60 м²</h2><p>План, этапы, покупки, бюджет и заметки — привязаны к реальным комнатам.</p></div><MagneticButton href="#/project" className="button-light">Открыть проект</MagneticButton></div>
+      <div className="project-shell">
+        <aside className="project-sidebar">
+          <Logo compact />
+          {['Обзор', 'Этапы', 'План помещений', 'Список покупок', 'Калькуляторы', 'Документы', 'Заметки', 'Бюджет'].map((item, i) => <div className={i === 1 ? 'active' : ''} key={item}><Icon name={i === 2 ? 'project' : i === 3 ? 'check' : i === 4 ? 'calc' : 'grid'} size={17} />{item}</div>)}
+        </aside>
+        <div className="project-canvas-wrap">
+          <div className="project-canvas-head"><div><small>Мой проект</small><strong>Ремонт квартиры 60 м²</strong></div><div className="project-canvas-progress"><span>Чистовая отделка</span><div className="progress"><i style={{ width: '68%' }} /></div><b>68%</b></div></div>
+          <FloorPlan />
+        </div>
+        <aside className="rooms-panel">
+          <div className="rooms-tabs"><button>Этажи</button><button>2D план</button><button className="active">3D вид</button></div>
+          <div className="mini-plan"><span /><span /><span /><span /></div>
+          <strong>Список помещений</strong>
+          {[
+            ['Гостиная', '18.2 м²'], ['Кухня', '10.4 м²'], ['Спальня', '12.5 м²'], ['Ванная', '4.8 м²'], ['Прихожая', '6.1 м²'], ['Балкон', '3.6 м²'],
+          ].map(([room, area]) => <div className="room-row" key={room}><i style={{ backgroundImage: `url(${room === 'Ванная' ? IMAGES.bathroom : room === 'Кухня' ? IMAGES.kitchen : IMAGES.apartment})` }} /><span><b>{room}</b><small>{area}</small></span><Icon name="chevron" size={14} /></div>)}
+        </aside>
+      </div>
+    </section>
+  )
+}
+
+function FloorPlan() {
+  return (
+    <div className="floor-plan" aria-label="Интерактивный макет квартиры">
+      <div className="room room--bed"><span>Спальня<small>12.5 м²</small></span><i className="bed" /></div>
+      <div className="room room--living"><span>Гостиная<small>18.2 м²</small></span><i className="sofa" /></div>
+      <div className="room room--bath"><span>Ванная<small>4.8 м²</small></span><i className="bath" /></div>
+      <div className="room room--hall"><span>Прихожая<small>6.1 м²</small></span></div>
+      <div className="room room--kitchen"><span>Кухня<small>10.4 м²</small></span><i className="table" /></div>
+      <div className="room room--balcony"><span>Балкон<small>3.6 м²</small></span></div>
+      {[1,2,3,4,5,6,7].map((n) => <button className={`plan-pin pin-${n}`} key={n} aria-label={`Точка ${n}`}><span /></button>)}
+    </div>
+  )
+}
+
+function HomePage({ query, setQuery }) {
+  return <>
+    <Hero query={query} setQuery={setQuery} />
+    <div className="home-body">
+      <QuickTools />
+      <PopularSections />
+      <KnowledgePreview />
+      <ProjectShowcase />
+    </div>
+  </>
+}
+
+function CatalogPage() {
+  return (
+    <main className="page page--paper catalog-page">
+      <PageIntro eyebrow="База знаний" title="Разделы" text="Выберите тему или найдите конкретную задачу. Структура растёт вместе со справочником, не превращаясь в свалку статей." />
+      <div className="catalog-search-row"><Link href="#/search" className="catalog-search"><Icon name="search" /> Поиск по разделам, статьям, инструментам…</Link><div className="chips"><span className="active">Все</span><span>Статьи</span><span>Инструменты</span></div></div>
+      <div className="category-gallery">
+        {DOM_CATEGORIES.slice(0, 12).map((category, i) => {
+          const count = DOM_GUIDES.filter((guide) => guide.category === category.id).length
+          return (
+            <TiltCard className="category-photo" key={category.id} data-reveal>
+              <Link href={`#/category/${category.id}`}>
+                <img src={CATEGORY_ART[i % CATEGORY_ART.length]} alt="" loading="lazy" />
+                <div className="category-photo__shade" />
+                <div><strong>{category.title}</strong><small>{count ? `${count} инструкций` : 'Раздел готовится'}</small></div>
+                <span><Icon name="arrow" size={16} /></span>
+              </Link>
+            </TiltCard>
+          )
+        })}
+      </div>
+      <section className="popular-guides">
+        <div className="section-title-row"><div><span className="overline">С чего начать</span><h2>Популярные инструкции</h2></div></div>
+        <div className="guide-card-grid">{DOM_GUIDES.slice(0, 6).map((guide, i) => <GuideCard key={guide.id} guide={guide} image={CATEGORY_ART[i % CATEGORY_ART.length]} />)}</div>
+      </section>
+    </main>
+  )
+}
+
+function CategoryPage({ id }) {
+  const category = DOM_CATEGORY_BY_ID[id]
+  if (!category) return <NotFound />
+  const guides = DOM_GUIDES.filter((guide) => guide.category === id)
+  return (
+    <main className="page page--paper">
+      <div className="category-banner" data-reveal>
+        <img src={CATEGORY_ART[Math.max(0, DOM_CATEGORIES.findIndex((c) => c.id === id)) % CATEGORY_ART.length]} alt="" />
+        <div />
+        <Link href="#/catalog" className="back-chip">← Все разделы</Link>
+        <section><span className="overline">Раздел</span><h1>{category.title}</h1><p>{category.description}</p><strong>{guides.length ? `${guides.length} практических инструкций` : 'Контент готовится'}</strong></section>
+      </div>
+      {guides.length ? <div className="guide-card-grid category-guides">{guides.map((guide, i) => <GuideCard key={guide.id} guide={guide} image={CATEGORY_ART[(i + 2) % CATEGORY_ART.length]} />)}</div> : <Empty title="Раздел уже в структуре" text="Инструкции появятся здесь без изменения логики интерфейса." />}
+    </main>
+  )
+}
+
+function GuideCard({ guide, image }) {
+  const { saved, toggleSaved } = useSaved()
+  const active = saved.has(guide.id)
+  return (
+    <article className="guide-list-card" data-reveal>
+      <Link href={`#/guide/${guide.id}`} className="guide-list-card__image"><img src={image || IMAGES.drywall} alt="" loading="lazy" /><span>{guide.difficulty}</span></Link>
+      <div className="guide-list-card__body">
+        <div className="guide-list-card__meta"><span>{DOM_CATEGORY_BY_ID[guide.category]?.title || guide.category}</span><span><Icon name="clock" size={13} /> {guide.duration}</span></div>
+        <Link href={`#/guide/${guide.id}`}><h3>{guide.title}</h3></Link>
+        <p>{guide.summary}</p>
+        <button className={`save-round ${active ? 'active' : ''}`} onClick={() => toggleSaved(guide.id)} aria-label={active ? 'Убрать из сохранённых' : 'Сохранить'}><Icon name={active ? 'heart' : 'bookmark'} size={18} /></button>
+      </div>
+    </article>
+  )
+}
+
+function GuidePage({ id }) {
+  const guide = DOM_GUIDE_BY_ID[id]
+  const { saved, toggleSaved } = useSaved()
+  const [activeStep, setActiveStep] = useState(0)
+  if (!guide) return <NotFound />
+  const category = DOM_CATEGORY_BY_ID[guide.category]
+  const heroImage = id.includes('socket') ? IMAGES.electrical : id.includes('door') ? IMAGES.wood : IMAGES.drywall
+  return (
+    <main className="page guide-page">
+      <div className="guide-breadcrumb"><Link href="#/home">Главная</Link><span>›</span><Link href={`#/category/${guide.category}`}>{category?.title || 'Раздел'}</Link><span>›</span><b>{guide.title}</b></div>
+      <header className="guide-page__head" data-reveal>
+        <div><span className="overline">{category?.title} · {guide.task}</span><h1>{guide.title}</h1><p>{guide.summary}</p><div className="guide-tags"><span>{guide.difficulty}</span><span><Icon name="clock" size={14} /> {guide.duration}</span><span>{guide.material}</span></div></div>
+        <button className={`save-pill ${saved.has(id) ? 'active' : ''}`} onClick={() => toggleSaved(id)}><Icon name="bookmark" size={17} />{saved.has(id) ? 'Сохранено' : 'Сохранить'}</button>
+      </header>
+      <div className="guide-layout">
+        <aside className="guide-toc" data-reveal>
+          <strong>Содержание</strong>
+          {guide.steps.map((step, i) => <button key={step.title} className={activeStep === i ? 'active' : ''} onClick={() => { setActiveStep(i); document.getElementById(`step-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}><span>{i + 1}</span>{step.title}</button>)}
+          <button onClick={() => document.getElementById('mistakes')?.scrollIntoView({ behavior: 'smooth' })}><span>!</span>Частые ошибки</button>
+        </aside>
+        <article className="guide-article">
+          <div className="article-visual" data-reveal style={{ backgroundImage: `url(${heroImage})` }}><button aria-label="Запустить видео"><Icon name="play" /></button><div className="hand-note">Профиль<br />и крепления →</div></div>
+          <div className="guide-side-cards" data-reveal>
+            <InfoList title="Что понадобится" items={[...guide.tools.slice(0, 4), ...guide.materials.slice(0, 2)]} icon="hammer" />
+            <div className="master-tip"><div className="master-avatar">М</div><div><strong>Совет мастера</strong><p>{guide.before[0]}</p></div></div>
+          </div>
+          <section className="before-box" data-reveal><span><Icon name="warning" /></span><div><strong>Перед началом</strong>{guide.before.map((item) => <p key={item}>{item}</p>)}</div></section>
+          <section className="steps-rich">
+            {guide.steps.map((step, i) => (
+              <article id={`step-${i}`} className="rich-step" data-reveal key={step.title}>
+                <div className="rich-step__number">{i + 1}</div><div><h2>{step.title}</h2><p>{step.text}</p>{i === 0 && <div className="mini-diagram"><span /><span /><span /><b>90°</b></div>}</div>
+              </article>
+            ))}
+          </section>
+          <section id="mistakes" className="mistakes-grid" data-reveal>
+            <div><span className="overline danger">Частые ошибки</span><ul>{guide.mistakes.map((item) => <li key={item}>{item}</li>)}</ul></div>
+            <div><span className="overline success">Если уже сделал</span><p>{guide.rescue}</p></div>
+          </section>
+          <div className="verification" data-reveal><Icon name="check" /><div><strong>Статус материала: рабочий черновик</strong><p>{guide.verification}</p></div></div>
+        </article>
+      </div>
+    </main>
+  )
+}
+
+function InfoList({ title, items, icon }) {
+  return <div className="info-list"><div className="info-list__title"><span><Icon name={icon} /></span><strong>{title}</strong></div>{items.map((item) => <div className="info-list__row" key={item}><Icon name="check" size={14} />{item}</div>)}</div>
+}
+
+function normalize(value) {
+  return String(value || '').toLocaleLowerCase('ru').replaceAll('ё', 'е').replace(/[^\p{L}\p{N}\s-]+/gu, ' ').replace(/\s+/g, ' ').trim()
+}
+
+const SEARCH_INDEX = DOM_GUIDES.map((guide) => ({ guide, text: normalize([guide.title, guide.summary, guide.task, guide.material, ...guide.tags, ...guide.tools, ...guide.materials].join(' ')) }))
+
+function getSearchResults(query) {
+  const needle = normalize(query)
+  if (!needle) return DOM_GUIDES
+  const words = needle.split(' ')
+  return SEARCH_INDEX.map(({ guide, text }) => {
+    const title = normalize(guide.title)
+    let score = title.includes(needle) ? 12 : 0
+    words.forEach((word) => { if (text.includes(word)) score += title.includes(word) ? 4 : 1 })
+    return { guide, score }
+  }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score).map((x) => x.guide)
+}
+
+function SearchPage({ query, setQuery }) {
+  const results = useMemo(() => getSearchResults(query), [query])
+  const suggestions = ['подрозетник', 'дверной проём', 'профиль', 'минвата', 'трещина', 'телевизор']
+  return (
+    <main className="page page--paper search-page">
+      <PageIntro eyebrow="Умный локальный поиск" title="Что нужно сделать?" text="Можно писать бытовым языком — поиск смотрит название задачи, материал, инструмент и типичные формулировки." />
+      <div className="search-page__field"><SearchField query={query} setQuery={setQuery} autoNavigate={false} /><button className="voice-button" aria-label="Голосовой поиск"><Icon name="mic" /></button></div>
+      <div className="suggestions">{suggestions.map((s) => <button onClick={() => setQuery(s)} key={s}>{s}</button>)}</div>
+      <div className="search-result-head"><strong>{query ? `Результаты для «${query}»` : 'Все инструкции'}</strong><span>{results.length}</span></div>
+      {results.length ? <div className="guide-card-grid">{results.map((guide, i) => <GuideCard key={guide.id} guide={guide} image={CATEGORY_ART[i % CATEGORY_ART.length]} />)}</div> : <Empty title="Ничего не найдено" text="Попробуй убрать лишние слова или выбрать один из быстрых запросов." />}
+    </main>
+  )
+}
+
+function CalculatorPage() {
+  const [values, setValues] = useState({ width: 4.5, height: 2.7, spacing: 0.6, layers: 1 })
+  const [result, setResult] = useState(null)
+  const calculate = (event) => {
+    event?.preventDefault()
+    const wall = Number(values.width) * Number(values.height)
+    const sheets = Math.ceil((wall * 2 * Number(values.layers) * 1.1) / (1.2 * 2.5))
+    const studs = Math.ceil(Number(values.width) / Number(values.spacing)) + 1
+    setResult({ sheets, studs, track: (Number(values.width) * 2 * 1.1).toFixed(1), studLength: (studs * Number(values.height) * 1.05).toFixed(1), insulation: (wall * 1.05).toFixed(1) })
+  }
+  const field = (key, label, opts = {}) => <label><span>{label}</span>{opts.options ? <select value={values[key]} onChange={(e) => setValues({ ...values, [key]: Number(e.target.value) })}>{opts.options.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select> : <div className="unit-input"><input type="number" min={opts.min || 0} step={opts.step || .1} value={values[key]} onChange={(e) => setValues({ ...values, [key]: e.target.value })} /><b>{opts.unit}</b></div>}</label>
+  return (
+    <main className="page page--paper calculator-page">
+      <PageIntro eyebrow="Калькуляторы" title="Расчёт гипсокартонной перегородки" text="Быстрый ориентир для закупки материалов. Проёмы, усиления и раскладку листов нужно уточнять отдельно." />
+      <div className="calculator-layout">
+        <aside className="calculator-nav" data-reveal>{['Гипсокартон', 'Штукатурка', 'Краска', 'Плитка', 'Ламинат', 'Стяжка', 'Тёплый пол', 'Кирпич и блоки'].map((item, i) => <button className={i === 0 ? 'active' : ''} key={item}><Icon name={i === 0 ? 'layers' : 'calc'} size={16} />{item}</button>)}</aside>
+        <section className="calculator-main" data-reveal>
+          <form onSubmit={calculate}>
+            <div className="calculator-tabs"><span className="active">Размеры помещения</span><span>Тип конструкции</span></div>
+            <div className="field-grid-premium">{field('width', 'Длина перегородки', { unit: 'м', min: .5 })}{field('height', 'Высота', { unit: 'м', min: 1 })}{field('spacing', 'Шаг стоек', { options: [[.6,'600 мм'], [.4,'400 мм']] })}{field('layers', 'Слоёв ГКЛ', { options: [[1,'1 слой'], [2,'2 слоя']] })}</div>
+            <button className="calc-submit" type="submit">Рассчитать <Icon name="arrow" size={16} /></button>
+          </form>
+          <WallSchematic width={values.width} height={values.height} />
+          <div className={`calculation-results ${result ? 'show' : ''}`}>
+            <h3>Результат расчёта</h3>
+            {result ? <div className="result-cards">
+              <ResultCard value={result.sheets} label="листов ГКЛ" />
+              <ResultCard value={`${result.track} м`} label="профиля UW" />
+              <ResultCard value={result.studs} label="стоек CW" />
+              <ResultCard value={`${result.studLength} м`} label="CW суммарно" />
+              <ResultCard value={`${result.insulation} м²`} label="минваты" />
+            </div> : <p>Заполните параметры и нажмите «Рассчитать».</p>}
+          </div>
+        </section>
+      </div>
+    </main>
+  )
+}
+
+function ResultCard({ value, label }) { return <div className="result-card"><span><Icon name="layers" /></span><strong>{value}</strong><small>{label}</small></div> }
+
+function WallSchematic({ width, height }) {
+  return <div className="wall-schematic"><div className="stud-wall">{[0,1,2,3,4,5,6].map((n) => <i key={n} />)}<span className="sheet left" /><span className="sheet right" /></div><div className="measure measure--w"><b>{width || 0} м</b></div><div className="measure measure--h"><b>{height || 0} м</b></div><div className="schematic-mode"><button className="active">3D</button><button>Схема</button></div></div>
+}
+
+function ProjectPage() {
+  const [progress, setProgress] = useState(() => Number(localStorage.getItem(PROJECT_KEY) || 68))
+  useEffect(() => localStorage.setItem(PROJECT_KEY, String(progress)), [progress])
+  return (
+    <main className="project-page-full">
+      <div className="project-appbar"><div><span className="overline">Мой проект</span><h1>Ремонт квартиры 60 м²</h1></div><div className="project-stage-control"><span>Чистовая отделка</span><input type="range" min="0" max="100" value={progress} onChange={(e) => setProgress(Number(e.target.value))} /><b>{progress}%</b></div></div>
+      <div className="project-workspace" data-reveal>
+        <aside className="workspace-nav">
+          <strong>Мой проект</strong>
+          {['Обзор', 'Этапы', 'План помещений', 'Список покупок', 'Калькуляторы', 'Документы', 'Заметки', 'Команда', 'Бюджет', 'Галерея'].map((item, i) => <button className={i === 1 ? 'active' : ''} key={item}><Icon name={i === 2 ? 'project' : i === 3 ? 'check' : i === 4 ? 'calc' : 'grid'} size={17} />{item}</button>)}
+        </aside>
+        <section className="workspace-main"><div className="workspace-tabs"><button>План</button><button>Задачи</button><button>Покупки</button><button>Бюджет</button><button>Файлы</button><button>Заметки</button></div><FloorPlan /><div className="plan-controls"><button><Icon name="ruler" /> Измерения</button><button>−</button><button>+</button></div></section>
+        <aside className="workspace-right"><div className="rooms-tabs"><button>Этажи</button><button>2D план</button><button className="active">3D вид</button></div><div className="mini-plan large"><span /><span /><span /><span /></div><strong>Список помещений <small>(6)</small></strong>{[['Гостиная','18.2 м²'],['Кухня','10.4 м²'],['Спальня','12.5 м²'],['Ванная','4.8 м²'],['Прихожая','6.1 м²'],['Балкон','3.6 м²']].map(([r,a],i)=><button className="workspace-room" key={r}><i style={{ backgroundImage:`url(${[IMAGES.apartment,IMAGES.kitchen,IMAGES.apartment,IMAGES.bathroom,IMAGES.room,IMAGES.apartment][i]})`}}/><span><b>{r}</b><small>{a}</small></span><Icon name="chevron" size={14}/></button>)}</aside>
+      </div>
+    </main>
+  )
+}
+
+const SavedContext = createContext(null)
+function SavedProvider({ children }) {
+  const [saved, setSaved] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')) } catch { return new Set() }
+  })
+  const toggleSaved = (id) => setSaved((previous) => {
+    const next = new Set(previous)
+    next.has(id) ? next.delete(id) : next.add(id)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]))
+    return next
+  })
+  return <SavedContext.Provider value={{ saved, toggleSaved }}>{children}</SavedContext.Provider>
+}
+function useSaved() { return useContext(SavedContext) }
+
+function SavedPage() {
+  const { saved } = useSaved()
+  const guides = DOM_GUIDES.filter((guide) => saved.has(guide.id))
+  return <main className="page page--paper"><PageIntro eyebrow="Ваша коллекция" title="Сохранённое" text="Инструкции, которые нужны прямо сейчас на объекте. Хранятся локально на этом устройстве." />{guides.length ? <div className="guide-card-grid">{guides.map((guide,i)=><GuideCard key={guide.id} guide={guide} image={CATEGORY_ART[i % CATEGORY_ART.length]}/>)}</div> : <Empty title="Здесь пока пусто" text="Нажмите значок сохранения в любой инструкции — она появится здесь." />}</main>
+}
+
+function PageIntro({ eyebrow, title, text }) {
+  return <header className="page-intro" data-reveal><span className="overline">{eyebrow}</span><h1>{title}</h1><p>{text}</p></header>
+}
+
+function Empty({ title, text }) { return <section className="empty-premium"><span><Icon name="spark" size={28} /></span><h2>{title}</h2><p>{text}</p><MagneticButton href="#/catalog" className="button-dark">Перейти в разделы</MagneticButton></section> }
+function NotFound() { return <main className="page page--paper"><Empty title="Страница не найдена" text="Эта ссылка больше не ведёт к материалу." /></main> }
+
+function CommandPalette({ open, onClose, query, setQuery }) {
+  const { navigate } = useNavigation()
+  const inputRef = useRef(null)
+  const results = useMemo(() => getSearchResults(query).slice(0, 6), [query])
+  useEffect(() => { if (open) requestAnimationFrame(() => inputRef.current?.focus()) }, [open])
+  if (!open) return null
+  return <div className="palette-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="command-palette" role="dialog" aria-modal="true" aria-label="Быстрый поиск">
+      <div className="palette-input"><Icon name="search" /><input ref={inputRef} value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Что вы хотите сделать?" onKeyDown={(e)=> e.key === 'Escape' && onClose()} /><kbd>ESC</kbd></div>
+      <div className="palette-results">{results.map((guide) => <button key={guide.id} onClick={() => { navigate(`#/guide/${guide.id}`); onClose() }}><span><Icon name="hammer" /></span><div><strong>{guide.title}</strong><small>{guide.summary}</small></div><Icon name="arrow" size={16} /></button>)}</div>
+      <footer><span>↑↓ выбрать</span><span>↵ открыть</span><span>⌘K поиск</span></footer>
+    </div>
+  </div>
+}
+
+function BottomNav() {
+  const { route } = useNavigation()
+  const items = [
+    ['home', 'Главная', '#/home', 'home'],
+    ['catalog', 'Разделы', '#/catalog', 'grid'],
+    ['search', 'Поиск', '#/search', 'search'],
+    ['project', 'Проект', '#/project', 'project'],
+    ['saved', 'Сохранено', '#/saved', 'bookmark'],
+  ]
+  return <nav className="bottom-app-nav" aria-label="Основная навигация">{items.map(([view,label,href,icon]) => <Link key={view} href={href} className={route.view === view || (view === 'catalog' && ['category','guide'].includes(route.view)) ? 'active' : ''}><span><Icon name={icon} size={20} /></span><small>{label}</small></Link>)}</nav>
+}
+
+function App() {
+  const { route } = useNavigation()
+  const [query, setQueryState] = useState(() => localStorage.getItem(SEARCH_KEY) || '')
+  const [palette, setPalette] = useState(false)
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const setQuery = (value) => { setQueryState(value); localStorage.setItem(SEARCH_KEY, value) }
+  useReveal(route.key)
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPalette(true) }
+      if (event.key === 'Escape') setPalette(false)
+    }
+    const onInstall = (event) => { event.preventDefault(); setInstallPrompt(event) }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('beforeinstallprompt', onInstall)
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('beforeinstallprompt', onInstall) }
+  }, [])
+
+  useEffect(() => {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const guide = route.view === 'guide' ? DOM_GUIDE_BY_ID[route.id] : null
+    const titles = { home: 'Дом — ремонт и строительство', catalog: 'Разделы — Дом', search: 'Поиск — Дом', calculator: 'Калькуляторы — Дом', saved: 'Сохранённое — Дом', project: 'Мой проект — Дом' }
+    document.title = guide ? `${guide.title} — Дом` : (titles[route.view] || 'Дом — ремонт и строительство')
+  }, [route])
+
+  const page = route.view === 'home' ? <HomePage query={query} setQuery={setQuery} />
+    : route.view === 'catalog' ? <CatalogPage />
+    : route.view === 'category' ? <CategoryPage id={route.id} />
+    : route.view === 'guide' ? <GuidePage id={route.id} />
+    : route.view === 'search' ? <SearchPage query={query} setQuery={setQuery} />
+    : route.view === 'calculator' ? <CalculatorPage />
+    : route.view === 'project' ? <ProjectPage />
+    : route.view === 'saved' ? <SavedPage /> : <NotFound />
+
+  return <div className={`app app--${route.view}`}>
+    <Header query={query} setQuery={setQuery} openPalette={() => setPalette(true)} />
+    <div className="page-transition" key={route.key}>{page}</div>
+    <BottomNav />
+    {installPrompt && <button className="install-fab" onClick={async () => { await installPrompt.prompt(); setInstallPrompt(null) }}><Icon name="home" size={17} /> На экран</button>}
+    <CommandPalette open={palette} onClose={() => setPalette(false)} query={query} setQuery={setQuery} />
+  </div>
+}
+
+createRoot(document.getElementById('root')).render(<NavigationProvider><SavedProvider><App /></SavedProvider></NavigationProvider>)

@@ -2,68 +2,60 @@
 
 ## Goal
 
-Create a large repair and construction reference that feels like a mobile app and stays maintainable when the catalog grows to hundreds or thousands of guides.
+Create a large repair and construction reference that feels like a premium native application while staying maintainable when the catalog grows to hundreds or thousands of guides.
 
-The product is task-first. A user should be able to arrive with a practical question such as "how do I cut a socket-box opening in drywall?" and reach a short, structured answer without reading a generic article about drywall.
+The product is task-first: a user should be able to arrive with a practical question such as "how do I cut a socket-box opening in drywall?" and reach a structured answer without reading a generic article about drywall.
 
 ## Repository boundary
 
 This repository is the source of truth for the Dom repair encyclopedia.
 
-The application is intentionally standalone:
+The application is standalone:
 
 - it does not depend on the main qsen React router;
 - it can be deployed at a site root or under a path such as /dom/;
+- Vite builds with a relative base;
 - the service worker derives its base path from its own registration scope;
 - the PWA manifest uses relative start and scope URLs;
-- CI and GitHub Pages deployment are owned by this repository; qsen-source is not part of the Dom deployment path.
+- CI and GitHub Pages deployment are owned by this repository.
 
 ## Current structure
 
-index.html
-- application shell;
-- sticky global search;
-- mobile bottom navigation;
-- PWA metadata.
+`index.html`
+- minimal React application shell;
+- PWA metadata and root mount point.
 
-content.js
+`src/main.jsx`
+- React application and component system;
+- hash routing with View Transitions where supported;
+- responsive desktop/mobile navigation;
+- local search and command palette;
+- saved guides in localStorage;
+- project workspace and progress;
+- guide, catalog and calculator screens;
+- install prompt and PWA registration.
+
+`src/styles.css`
+- premium visual system;
+- dark cinematic landing and warm construction palette;
+- desktop workspace and mobile app layouts;
+- 3D-style CSS scenes;
+- scroll-reveal, hover, tilt and micro-interactions;
+- responsive and reduced-motion states.
+
+`content.js`
 - category registry;
 - structured guide records;
-- first drywall guides.
+- content remains independent from presentation.
 
-app.js
-- hash routing;
-- local search;
-- saved guides in localStorage;
-- category and guide rendering;
-- related guides;
-- rough partition calculator;
-- PWA installation handling.
+`manifest.webmanifest`, `sw.js`, `icon.svg`
+- standalone installable PWA;
+- path-portable scope;
+- offline shell and runtime asset caching.
 
-styles.css
-- mobile-first application layout;
-- tablet and desktop responsive states;
-- safe-area support.
-
-manifest.webmanifest
-- standalone launch mode;
-- path-portable scope and start URL.
-
-sw.js
-- caches only the application shell inside its own scope;
-- offline fallback for the standalone app.
-
-icon.svg
-- standalone application icon.
-
-package.json and scripts/
-- lightweight validation and static dist build.
-
-.github/workflows/ci.yml
-- runs checks and build on pushes to main and pull requests.
-
-.github/workflows/pages.yml
-- builds and deploys dist through GitHub Pages on pushes to main.
+`scripts/`
+- project validation;
+- Vite production build and dist packaging.
 
 ## Content model
 
@@ -87,13 +79,11 @@ Each guide has stable fields:
 - diagram
 - verification
 
-This model keeps content separate from rendering and lets one guide appear through different discovery paths later, for example material, task, tool, problem or construction node.
+The same guide can therefore be discovered through category, material, task, tool, problem or project context without duplicating content.
 
 ## Information quality
 
-Construction content must not rely on a single unsourced rule.
-
-Recommended evidence order:
+Construction content must not rely on a single unsourced rule. Recommended evidence order:
 
 1. current regulations and standards when applicable;
 2. technical albums and installation manuals from the selected system manufacturer;
@@ -102,62 +92,37 @@ Recommended evidence order:
 
 MVP guides are marked as working drafts where exact dimensions or system-specific requirements still need verification.
 
-## Planned discovery model
-
-A guide should eventually be reachable by multiple facets:
-
-- category: drywall, electrical, plumbing, finishing;
-- action: build, cut, fasten, repair, find;
-- material: drywall, concrete, brick, wood;
-- object: socket box, doorway, shelf, pipe;
-- problem: cracked joint, loose box, hidden stud.
-
-The first release uses local weighted text search. The structured fields already support later filtering without migrating content.
-
 ## Route strategy
 
-The MVP is a single static application with internal hash routes:
+The React application currently uses portable internal hash routes:
 
 - #/home
+- #/catalog
 - #/search
 - #/category/drywall
 - #/guide/drywall-socket-box
 - #/calculator
+- #/project
 - #/saved
 
 When the content taxonomy stabilizes, public indexable guide URLs can be introduced as a separate SEO phase.
 
-## First content block
+## Interaction strategy
 
-Drywall is the pilot domain because it exercises most future patterns:
+Motion should communicate hierarchy rather than decorate every pixel:
 
-- framing;
-- openings;
-- cutting;
-- fastening;
-- insulation;
-- finishing;
-- hidden structure detection;
-- load mounting;
-- repair of mistakes.
-
-The starter data includes ten working guides and one material calculator.
-
-## Next milestones
-
-1. Verify every drywall guide against manufacturer systems and applicable current rules.
-2. Add source metadata and a visible evidence layer to each recommendation.
-3. Expand drywall to a complete practical set, including corners, multiple layers, ceilings, moisture zones and service penetrations.
-4. Add purpose-built diagrams and photos.
-5. Improve calculator logic for openings, sheet orientation, stock profile lengths and shopping lists.
-6. Add project collections such as Bathroom, Garage and Apartment.
-7. Add electrical and plumbing sections only after their safety and evidence requirements are defined.
-8. Introduce indexable non-hash URLs when the content is mature enough.
+- route changes use the browser View Transitions API where available;
+- content reveals with IntersectionObserver;
+- premium cards can respond to pointer position with subtle perspective tilt;
+- primary CTAs use restrained magnetic movement;
+- the header exposes scroll progress;
+- the command palette opens from Cmd/Ctrl + K;
+- all nonessential motion is disabled for prefers-reduced-motion.
 
 ## Product principle
 
 The core flow is:
 
-task -> steps -> diagram -> mistakes -> rescue -> verified source
+task -> steps -> visual -> mistakes -> rescue -> verified source
 
-The interface should always optimize for the person who is standing at the worksite with a phone in one hand.
+The interface should remain useful to a person standing at the worksite with a phone in one hand while still feeling premium on a large desktop display.
