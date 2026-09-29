@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Дом">
-  <rect width="512" height="512" rx="112" fill="#1d211f"/>
-  <path d="M102 246 256 116l154 130v154a36 36 0 0 1-36 36H138a36 36 0 0 1-36-36V246Z" fill="#fbfaf5"/>
-  <path d="M184 226h144v210H184z" fill="#d86f38"/>
-  <path d="M222 276h68v160h-68z" fill="#1d211f"/>
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffd36a"/><stop offset="1" stop-color="#e89b24"/></linearGradient></defs>
+  <rect width="512" height="512" rx="116" fill="#111412"/>
+  <path d="M104 244 256 116l152 128v154c0 22-18 40-40 40H144c-22 0-40-18-40-40V244Z" fill="url(#g)"/>
+  <path d="M185 246h142v192H185z" fill="#f8f5ed"/>
+  <path d="M224 296h64v142h-64z" fill="#111412"/>
+  <circle cx="274" cy="369" r="7" fill="#ffd36a"/>
 </svg>
