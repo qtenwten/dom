@@ -1,6 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import {
+  ENGINEERING_ITEMS,
+  ENGINEERING_LAYERS,
+  WALL_ASSEMBLIES,
+  buildDrywallTakeoff,
+  buildEngineeringTakeoff,
+  engineeringItemsForLayer,
+  normalizeEngineering,
+  snapProjectPoint,
+  validateProject,
+} from './planner-engine.js'
 import './planner.css'
 
 const STORAGE_KEY = 'qsen-dom:planner-v1'
@@ -48,6 +59,7 @@ function makeWall(overrides = {}) {
     material: 'existing',
     thickness: 120,
     finish: 'plaster-paint',
+    assembly: '',
     openings: [],
     ...overrides,
   }
@@ -87,6 +99,7 @@ function makeFreeWall(index = 0) {
     thickness: 100,
     material: 'drywall',
     finish: 'plaster-paint',
+    assembly: 'drywall-75-single',
     openings: [],
   }
 }
@@ -131,6 +144,7 @@ function sampleProject() {
     grid: 20,
     rooms: [living, kitchen, bedroom, bath],
     freeWalls: [],
+    engineering: { electrical: [], plumbing: [], heating: [] },
     prices: {},
   }
 }
@@ -157,6 +171,7 @@ function normalizeProject(input) {
         const src = raw.walls && raw.walls[side] ? raw.walls[side] : {}
         room.walls[side] = makeWall({
           ...src,
+          assembly: src.material === 'drywall' ? (WALL_ASSEMBLIES[src.assembly] ? src.assembly : 'drywall-75-single') : '',
           thickness: clamp(src.thickness || 120, 40, 1000),
           openings: Array.isArray(src.openings) ? src.openings.slice(0, 30).map((o) => ({
             id: o.id || uid('opening'),
@@ -181,8 +196,10 @@ function normalizeProject(input) {
       y2: clamp(raw.y2, 0, 5000),
       height: clamp(raw.height, 180, 1000),
       thickness: clamp(raw.thickness, 40, 1000),
+      assembly: raw.material === 'drywall' ? (WALL_ASSEMBLIES[raw.assembly] ? raw.assembly : 'drywall-75-single') : '',
       openings: Array.isArray(raw.openings) ? raw.openings.slice(0, 30) : [],
     })) : [],
+    engineering: normalizeEngineering(input.engineering),
     prices: input.prices && typeof input.prices === 'object' ? input.prices : {},
   }
 }
@@ -311,9 +328,7 @@ function buildTakeoff(project) {
     const parts = key.split(':')
     const material = parts[0]
     const thicknessMm = Number(parts[1])
-    if (material === 'drywall') {
-      add('Стены · конструкция', 'ГКЛ 1200×2500', Math.ceil(area * 2 * 1.1 / 3), 'шт', '10%', 'Обе стороны перегородки; ориентир без раскладки')
-    } else if (material === 'brick') {
+    if (material === 'brick') {
       const volume = area * thicknessMm / 1000
       add('Стены · конструкция', 'Кирпич одинарный', Math.ceil(volume * 394 * 1.05), 'шт', '5%', 'Ориентир по объёму; кладку уточнить по формату кирпича')
     } else if (material === 'block') {
@@ -325,6 +340,7 @@ function buildTakeoff(project) {
   const metrics = projectMetrics(project)
   add('Плинтус', 'Плинтус', metrics.baseboard * 1.08, 'м', '8%', 'Дверные проёмы вычтены')
   add('Грунтование', 'Грунтовка стен и потолка', (metrics.wallArea + metrics.ceilingArea) * 0.12, 'л', '≈20%', 'Ориентир 0,12 л/м² на один рабочий цикл')
+  rows.push(...buildDrywallTakeoff(project), ...buildEngineeringTakeoff(project))
   return rows
 }
 
@@ -389,9 +405,10 @@ function RoomInspector({ room, side, onRoomChange, onWallChange, onDelete, onDup
     <div className="planner-wall-title"><div><small>Выбрана стена</small><strong>{SIDE_NAMES[side]} · {(length / 100).toFixed(2)} м</strong></div><span>{room.height} см</span></div>
     <div className="planner-fields">
       <NumberInput label="Толщина" value={wall.thickness} unit="мм" min={40} max={1000} onChange={(thickness) => onWallChange({ thickness })} />
-      <SelectInput label="Материал" value={wall.material} options={Object.entries(MATERIALS).map(([k, v]) => [k, v.label])} onChange={(material) => onWallChange({ material })} />
+      <SelectInput label="Материал" value={wall.material} options={Object.entries(MATERIALS).map(([k, v]) => [k, v.label])} onChange={(material) => onWallChange({ material, assembly: material === 'drywall' ? (wall.assembly || 'drywall-75-single') : '' })} />
       <SelectInput label="Отделка" value={wall.finish} options={Object.entries(FINISHES)} onChange={(finish) => onWallChange({ finish })} />
     </div>
+    {wall.material === 'drywall' && <SelectInput label="Пирог перегородки" value={wall.assembly || 'drywall-75-single'} options={Object.entries(WALL_ASSEMBLIES).map(([key, item]) => [key, item.label])} onChange={(assembly) => onWallChange({ assembly, thickness: WALL_ASSEMBLIES[assembly].thickness })} />}
     <WallOpenings wall={wall} wallLength={length} onChange={(nextWall) => onWallChange(nextWall, true)} />
     <div className="planner-danger-actions"><button type="button" onClick={onDuplicate}>Дублировать</button><button type="button" onClick={onDelete}>Удалить помещение</button></div>
   </div>
@@ -408,9 +425,10 @@ function FreeWallInspector({ wall, onChange, onDelete }) {
       <NumberInput label="Y2" value={wall.y2} unit="см" onChange={(y2) => onChange({ y2 })} />
       <NumberInput label="Высота" value={wall.height} unit="см" min={180} max={1000} onChange={(height) => onChange({ height })} />
       <NumberInput label="Толщина" value={wall.thickness} unit="мм" min={40} max={1000} onChange={(thickness) => onChange({ thickness })} />
-      <SelectInput label="Материал" value={wall.material} options={Object.entries(MATERIALS).map(([k, v]) => [k, v.label])} onChange={(material) => onChange({ material })} />
+      <SelectInput label="Материал" value={wall.material} options={Object.entries(MATERIALS).map(([k, v]) => [k, v.label])} onChange={(material) => onChange({ material, assembly: material === 'drywall' ? (wall.assembly || 'drywall-75-single') : '' })} />
       <SelectInput label="Отделка" value={wall.finish} options={Object.entries(FINISHES)} onChange={(finish) => onChange({ finish })} />
     </div>
+    {wall.material === 'drywall' && <SelectInput label="Пирог перегородки" value={wall.assembly || 'drywall-75-single'} options={Object.entries(WALL_ASSEMBLIES).map(([key, item]) => [key, item.label])} onChange={(assembly) => onChange({ assembly, thickness: WALL_ASSEMBLIES[assembly].thickness })} />}
     <div className="planner-wall-title"><div><small>Фактическая длина</small><strong>{(length / 100).toFixed(2)} м</strong></div><span>{wall.height} см</span></div>
     <WallOpenings wall={wall} wallLength={length} onChange={(nextWall) => onChange(nextWall, true)} />
     <div className="planner-danger-actions"><button type="button" onClick={onDelete}>Удалить стену</button></div>
@@ -426,10 +444,28 @@ function openingLine(room, side, opening) {
   return { x1: x + room.width, y1: y + opening.offset, x2: x + room.width, y2: y + opening.offset + opening.width }
 }
 
-function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom }) {
+function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom, tool, layer, engineeringType, onAddFreeWall, onAddEngineering }) {
   const svgRef = useRef(null)
   const dragRef = useRef(null)
   const resizeRef = useRef(null)
+  const [drawStart, setDrawStart] = useState(null)
+  const [hoverSnap, setHoverSnap] = useState(null)
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        setDrawStart(null)
+        setHoverSnap(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
+    if (tool !== 'wall') setDrawStart(null)
+    if (tool === 'select') setHoverSnap(null)
+  }, [tool, layer])
 
   const viewBox = useMemo(() => {
     const xs = []
@@ -463,8 +499,35 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom 
     }
   }
 
-  const startDrag = (event, room) => {
+  const pointSnapped = (event, origin = null) => snapProjectPoint(project, pointFromEvent(event), origin)
+
+  const handlePlanPointerDown = (event) => {
     if (event.button !== 0) return
+    if (tool === 'wall') {
+      const point = pointSnapped(event, drawStart)
+      if (!drawStart) {
+        setDrawStart(point)
+        setHoverSnap(point)
+        return
+      }
+      const length = Math.hypot(point.x - drawStart.x, point.y - drawStart.y)
+      if (length >= 20) {
+        onAddFreeWall({ x1: drawStart.x, y1: drawStart.y, x2: point.x, y2: point.y })
+        setDrawStart(point)
+        setHoverSnap(point)
+      }
+      return
+    }
+    if (tool === 'engineering' && layer !== 'architecture' && engineeringType) {
+      const point = pointSnapped(event)
+      onAddEngineering(layer, engineeringType, point)
+    }
+  }
+
+  const startDrag = (event, room) => {
+    if (tool !== 'select') return
+    if (event.button !== 0) return
+    event.stopPropagation()
     const point = pointFromEvent(event)
     dragRef.current = { id: room.id, dx: point.x - room.x, dy: point.y - room.y }
     event.currentTarget.setPointerCapture?.(event.pointerId)
@@ -472,6 +535,7 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom 
   }
 
   const startResize = (event, room) => {
+    if (tool !== 'select') return
     event.stopPropagation()
     const point = pointFromEvent(event)
     resizeRef.current = { id: room.id, startX: point.x, startY: point.y, width: room.width, depth: room.depth }
@@ -480,6 +544,13 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom 
   }
 
   const movePointer = (event) => {
+    if (tool === 'wall' && drawStart) {
+      setHoverSnap(pointSnapped(event, drawStart))
+      return
+    }
+    if (tool === 'engineering') {
+      setHoverSnap(pointSnapped(event))
+    }
     if (resizeRef.current) {
       const point = pointFromEvent(event)
       const resize = resizeRef.current
@@ -579,7 +650,9 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom 
     </g>
   }
 
-  return <svg ref={svgRef} className="planner-svg" viewBox={viewBox.x + ' ' + viewBox.y + ' ' + viewBox.width + ' ' + viewBox.height} role="img" aria-label="Редактируемый архитектурный план квартиры" onPointerMove={movePointer} onPointerUp={endPointer} onPointerCancel={endPointer}>
+  const engineeringItems = layer === 'architecture' ? [] : (project.engineering?.[layer] || [])
+
+  return <svg ref={svgRef} className={'planner-svg tool-' + tool} viewBox={viewBox.x + ' ' + viewBox.y + ' ' + viewBox.width + ' ' + viewBox.height} role="img" aria-label="Редактируемый архитектурный план квартиры" onPointerDown={handlePlanPointerDown} onPointerMove={movePointer} onPointerUp={endPointer} onPointerCancel={endPointer}>
     <defs>
       <pattern id="planner-grid-small" width={project.grid} height={project.grid} patternUnits="userSpaceOnUse"><path d={'M ' + project.grid + ' 0 L 0 0 0 ' + project.grid} fill="none" className="grid-small" /></pattern>
       <pattern id="planner-grid-large" width={project.grid * 5} height={project.grid * 5} patternUnits="userSpaceOnUse"><rect width={project.grid * 5} height={project.grid * 5} fill="url(#planner-grid-small)" /><path d={'M ' + project.grid * 5 + ' 0 L 0 0 0 ' + project.grid * 5} fill="none" className="grid-large" /></pattern>
@@ -619,7 +692,7 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom 
           const wallActive = active && selected.side === side
           const wall = room.walls[side]
           return <g key={side}>
-            <line className={'plan-wall-hit ' + (wallActive ? 'active' : '')} x1={points[0]} y1={points[1]} x2={points[2]} y2={points[3]} onPointerDown={(e) => { e.stopPropagation(); setSelected({ type: 'room', id: room.id, side }) }} />
+            <line className={'plan-wall-hit ' + (wallActive ? 'active' : '')} x1={points[0]} y1={points[1]} x2={points[2]} y2={points[3]} onPointerDown={(e) => { if (tool !== 'select') return; e.stopPropagation(); setSelected({ type: 'room', id: room.id, side }) }} />
             <line className={'plan-wall ' + (wallActive ? 'active' : '')} style={{ strokeWidth: wallStroke(wall) }} x1={points[0]} y1={points[1]} x2={points[2]} y2={points[3]} pointerEvents="none" />
             {wall.openings.map((opening) => openingGlyph(room, side, opening))}
           </g>
@@ -632,13 +705,29 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom 
     })}
     {project.freeWalls.map((wall) => {
       const active = selected.type === 'wall' && selected.id === wall.id
-      return <g key={wall.id} onPointerDown={(e) => { e.stopPropagation(); setSelected({ type: 'wall', id: wall.id }) }}>
+      return <g key={wall.id} onPointerDown={(e) => { if (tool !== 'select') return; e.stopPropagation(); setSelected({ type: 'wall', id: wall.id }) }}>
         <line className={'free-wall-hit ' + (active ? 'active' : '')} x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2} />
         <line className={'free-wall-line ' + (active ? 'active' : '')} style={{ strokeWidth: wallStroke(wall) }} x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2} pointerEvents="none" />
         {wall.openings.map((opening) => freeOpeningGlyph(wall, opening))}
         <text className="plan-dimension" x={(wall.x1 + wall.x2) / 2} y={(wall.y1 + wall.y2) / 2 - 15} textAnchor="middle">{(wallLengthFree(wall) / 100).toFixed(2)} м</text>
       </g>
     })}
+    {engineeringItems.map((item) => {
+      const spec = ENGINEERING_ITEMS[item.type] || { glyph: '?', label: item.type }
+      const active = selected.type === 'engineering' && selected.id === item.id
+      return <g key={item.id} className={'engineering-point layer-' + layer + (active ? ' active' : '')} transform={'translate(' + item.x + ' ' + item.y + ')'} onPointerDown={(e) => { if (tool !== 'select') return; e.stopPropagation(); setSelected({ type: 'engineering', layer, id: item.id }) }}>
+        <circle r="17" />
+        <text textAnchor="middle" dominantBaseline="central">{spec.glyph}</text>
+        <title>{spec.label} · {item.height} см</title>
+      </g>
+    })}
+    {drawStart && hoverSnap && tool === 'wall' && <g className="planner-draw-preview" pointerEvents="none">
+      <line x1={drawStart.x} y1={drawStart.y} x2={hoverSnap.x} y2={hoverSnap.y} />
+      <circle cx={drawStart.x} cy={drawStart.y} r="7" />
+      <circle cx={hoverSnap.x} cy={hoverSnap.y} r="9" />
+      <text x={(drawStart.x + hoverSnap.x) / 2} y={(drawStart.y + hoverSnap.y) / 2 - 14} textAnchor="middle">{(Math.hypot(hoverSnap.x - drawStart.x, hoverSnap.y - drawStart.y) / 100).toFixed(2)} м · {hoverSnap.label}</text>
+    </g>}
+    {!drawStart && hoverSnap && tool === 'engineering' && <g className="planner-snap-preview" pointerEvents="none"><circle cx={hoverSnap.x} cy={hoverSnap.y} r="8" /><text x={hoverSnap.x + 12} y={hoverSnap.y - 12}>{hoverSnap.label}</text></g>}
   </svg>
 }
 
@@ -1097,6 +1186,39 @@ function FloorPlan3D({ project, selected, setSelected, angle }) {
   </div>
 }
 
+function EngineeringPalette({ layer, activeType, onChoose, onSelectMode }) {
+  const items = engineeringItemsForLayer(layer)
+  return <div className="engineering-palette">
+    <div className="planner-panel-head"><div><span>{ENGINEERING_LAYERS[layer]?.short}</span><strong>{ENGINEERING_LAYERS[layer]?.label}</strong></div><button type="button" onClick={onSelectMode}>Выбрать</button></div>
+    <p>Выберите элемент и кликайте по плану. Координаты магнитятся к сетке, углам и серединам стен.</p>
+    <div className="engineering-palette__grid">{items.map(([key, item]) => <button key={key} type="button" className={activeType === key ? 'active' : ''} onClick={() => onChoose(key)}><b>{item.glyph}</b><span>{item.label}</span><small>{item.height} см</small></button>)}</div>
+  </div>
+}
+
+function EngineeringInspector({ item, layer, onChange, onDelete }) {
+  const spec = ENGINEERING_ITEMS[item.type] || { label: item.type }
+  return <div className="planner-inspector__content">
+    <div className="engineering-inspector-title"><span>{ENGINEERING_LAYERS[layer]?.short}</span><div><small>Инженерная точка</small><strong>{spec.label}</strong></div></div>
+    <div className="planner-fields">
+      <NumberInput label="X" value={item.x} unit="см" onChange={(x) => onChange({ x })} />
+      <NumberInput label="Y" value={item.y} unit="см" onChange={(y) => onChange({ y })} />
+      <NumberInput label="Высота" value={item.height} unit="см" min={0} max={1000} onChange={(height) => onChange({ height })} />
+    </div>
+    <TextInput label="Примечание" value={item.note || ''} onChange={(note) => onChange({ note })} />
+    <div className="planner-danger-actions"><button type="button" onClick={onDelete}>Удалить точку</button></div>
+  </div>
+}
+
+function ValidationView({ project }) {
+  const issues = useMemo(() => validateProject(project), [project])
+  const errors = issues.filter((item) => item.severity === 'error').length
+  const warnings = issues.filter((item) => item.severity === 'warn').length
+  return <div className="planner-validation">
+    <div className="validation-summary"><div><small>Ошибки</small><strong>{errors}</strong></div><div><small>Предупреждения</small><strong>{warnings}</strong></div><p>Проверка ловит геометрические конфликты и пропущенные инженерные опорные точки. Нормативные решения всё равно нужно сверять с проектом и требованиями конкретной системы.</p></div>
+    <div className="validation-list">{issues.map((item) => <div key={item.id} className={'validation-item ' + item.severity}><span>{item.severity === 'error' ? '×' : item.severity === 'warn' ? '!' : item.severity === 'ok' ? '✓' : 'i'}</span><div><strong>{item.title}</strong><small>{item.detail}</small></div></div>)}</div>
+  </div>
+}
+
 function MaterialsView({ project, onPriceChange }) {
   const metrics = useMemo(() => projectMetrics(project), [project])
   const rows = useMemo(() => buildTakeoff(project), [project])
@@ -1153,6 +1275,9 @@ export default function PlannerPage() {
   const [tab, setTab] = useState('plan')
   const [view, setView] = useState('2d')
   const [angle, setAngle] = useState(-18)
+  const [layer, setLayer] = useState('architecture')
+  const [tool, setTool] = useState('select')
+  const [engineeringType, setEngineeringType] = useState('socket')
   const [notice, setNotice] = useState('')
   const past = useRef([])
   const future = useRef([])
@@ -1191,6 +1316,7 @@ export default function PlannerPage() {
 
   const selectedRoom = selected.type === 'room' ? project.rooms.find((room) => room.id === selected.id) : null
   const selectedWall = selected.type === 'wall' ? project.freeWalls.find((wall) => wall.id === selected.id) : null
+  const selectedEngineering = selected.type === 'engineering' ? project.engineering?.[selected.layer]?.find((item) => item.id === selected.id) : null
   useEffect(() => {
     if (selected.type === 'room' && !selectedRoom && project.rooms[0]) setSelected({ type: 'room', id: project.rooms[0].id, side: 'north' })
     if (selected.type === 'wall' && !selectedWall && project.rooms[0]) setSelected({ type: 'room', id: project.rooms[0].id, side: 'north' })
@@ -1223,11 +1349,48 @@ export default function PlannerPage() {
     setSelected({ type: 'room', id: room.id, side: 'north' })
     setTab('plan')
   }
-  const addFreeWall = () => {
-    const wall = makeFreeWall(project.freeWalls.length)
+  const addFreeWall = (coords = null) => {
+    const wall = { ...makeFreeWall(project.freeWalls.length), ...(coords || {}) }
     commit((current) => ({ ...current, freeWalls: [...current.freeWalls, wall] }))
     setSelected({ type: 'wall', id: wall.id })
     setTab('plan')
+  }
+  const addEngineeringPoint = (layerKey, type, point) => {
+    const spec = ENGINEERING_ITEMS[type]
+    if (!spec || spec.layer !== layerKey) return
+    const item = { id: uid('eng'), type, x: round(point.x, 1), y: round(point.y, 1), height: spec.height, note: '' }
+    commit((current) => {
+      const engineering = normalizeEngineering(current.engineering)
+      return {
+        ...current,
+        engineering: {
+          ...engineering,
+          [layerKey]: [...engineering[layerKey], item],
+        },
+      }
+    })
+    setSelected({ type: 'engineering', layer: layerKey, id: item.id })
+  }
+  const updateEngineeringPoint = (patch) => {
+    if (!selectedEngineering) return
+    commit((current) => ({
+      ...current,
+      engineering: {
+        ...current.engineering,
+        [selected.layer]: current.engineering[selected.layer].map((item) => item.id === selectedEngineering.id ? { ...item, ...patch } : item),
+      },
+    }))
+  }
+  const deleteEngineeringPoint = () => {
+    if (!selectedEngineering) return
+    commit((current) => ({
+      ...current,
+      engineering: {
+        ...current.engineering,
+        [selected.layer]: current.engineering[selected.layer].filter((item) => item.id !== selectedEngineering.id),
+      },
+    }))
+    setSelected({ type: 'none', id: '' })
   }
   const deleteSelectedRoom = () => {
     if (!selectedRoom) return
@@ -1321,42 +1484,52 @@ export default function PlannerPage() {
       <button type="button" className={tab === 'plan' ? 'active' : ''} onClick={() => setTab('plan')}>План и 3D</button>
       <button type="button" className={tab === 'materials' ? 'active' : ''} onClick={() => setTab('materials')}>Материалы</button>
       <button type="button" className={tab === 'readiness' ? 'active' : ''} onClick={() => setTab('readiness')}>Перед началом работ</button>
+      <button type="button" className={tab === 'validation' ? 'active' : ''} onClick={() => setTab('validation')}>Проверка проекта</button>
       <div className="planner-tabs__summary"><span>{project.rooms.length} помещений</span><b>{metrics.floorArea.toFixed(1)} м²</b></div>
     </div>
 
     {tab === 'plan' && <div className="planner-workspace">
       <aside className="planner-objects">
-        <div className="planner-panel-head"><div><span>ОБЪЕКТЫ</span><strong>Помещения и стены</strong></div><button type="button" onClick={addRoom}>+ Комната</button></div>
-        <div className="planner-object-list">
-          {project.rooms.map((room) => <button type="button" key={room.id} className={selected.type === 'room' && selected.id === room.id ? 'active' : ''} onClick={() => setSelected({ type: 'room', id: room.id, side: 'north' })}><span className="object-index">{String(project.rooms.indexOf(room) + 1).padStart(2, '0')}</span><div><strong>{room.name}</strong><small>{room.width} × {room.depth} см · {(room.width * room.depth / 10000).toFixed(1)} м²</small></div></button>)}
-        </div>
-        <button className="planner-add-wall" type="button" onClick={addFreeWall}>+ Добавить свободную стену</button>
-        {project.freeWalls.length > 0 && <div className="planner-object-list planner-object-list--walls">{project.freeWalls.map((wall) => <button type="button" key={wall.id} className={selected.type === 'wall' && selected.id === wall.id ? 'active' : ''} onClick={() => setSelected({ type: 'wall', id: wall.id })}><span className="object-index">W</span><div><strong>{wall.name}</strong><small>{(wallLengthFree(wall) / 100).toFixed(2)} м · {wall.height} см</small></div></button>)}</div>}
-        <div className="planner-grid-control"><span>Привязка к сетке</span><select value={project.grid} onChange={(e) => commit((current) => ({ ...current, grid: Number(e.target.value) }))}><option value="10">10 см</option><option value="20">20 см</option><option value="50">50 см</option></select></div>
-        <button className="planner-reset" type="button" onClick={resetProject}>Загрузить пример заново</button>
+        {layer === 'architecture' ? <>
+          <div className="planner-panel-head"><div><span>ОБЪЕКТЫ</span><strong>Помещения и стены</strong></div><button type="button" onClick={addRoom}>+ Комната</button></div>
+          <div className="planner-object-list">
+            {project.rooms.map((room) => <button type="button" key={room.id} className={selected.type === 'room' && selected.id === room.id ? 'active' : ''} onClick={() => { setTool('select'); setSelected({ type: 'room', id: room.id, side: 'north' }) }}><span className="object-index">{String(project.rooms.indexOf(room) + 1).padStart(2, '0')}</span><div><strong>{room.name}</strong><small>{room.width} × {room.depth} см · {(room.width * room.depth / 10000).toFixed(1)} м²</small></div></button>)}
+          </div>
+          <div className="planner-draw-actions">
+            <button className={tool === 'wall' ? 'active' : ''} type="button" onClick={() => { setTool(tool === 'wall' ? 'select' : 'wall'); setView('2d') }}>{tool === 'wall' ? '✓ Закончить стены' : '✎ Рисовать стены'}</button>
+            <button type="button" onClick={() => addFreeWall()}>+ Стена по координатам</button>
+          </div>
+          {tool === 'wall' && <div className="planner-tool-help"><b>Режим построения</b><span>Кликайте последовательные точки. Есть привязка к углам, серединам, сетке и углам 0/45/90°. Esc сбрасывает текущую цепочку.</span></div>}
+          {project.freeWalls.length > 0 && <div className="planner-object-list planner-object-list--walls">{project.freeWalls.map((wall) => <button type="button" key={wall.id} className={selected.type === 'wall' && selected.id === wall.id ? 'active' : ''} onClick={() => { setTool('select'); setSelected({ type: 'wall', id: wall.id }) }}><span className="object-index">W</span><div><strong>{wall.name}</strong><small>{(wallLengthFree(wall) / 100).toFixed(2)} м · {wall.height} см</small></div></button>)}</div>}
+          <div className="planner-grid-control"><span>Привязка к сетке</span><select value={project.grid} onChange={(e) => commit((current) => ({ ...current, grid: Number(e.target.value) }))}><option value="10">10 см</option><option value="20">20 см</option><option value="50">50 см</option></select></div>
+          <button className="planner-reset" type="button" onClick={resetProject}>Загрузить пример заново</button>
+        </> : <EngineeringPalette layer={layer} activeType={tool === 'engineering' ? engineeringType : ''} onChoose={(type) => { setEngineeringType(type); setTool('engineering'); setView('2d') }} onSelectMode={() => setTool('select')} />}
       </aside>
 
       <section className="planner-stage">
+        <div className="planner-layerbar">{Object.entries(ENGINEERING_LAYERS).map(([key, item]) => <button key={key} type="button" className={layer === key ? 'active' : ''} onClick={() => { setLayer(key); setTool('select'); if (key === 'architecture') setSelected({ type: 'room', id: project.rooms[0]?.id || '', side: 'north' }); else { setView('2d'); setSelected({ type: 'none', id: '' }) } }}><b>{item.short}</b><span>{item.label}</span></button>)}</div>
         <div className="planner-stage-toolbar">
           <div className="view-switch"><button type="button" className={view === '2d' ? 'active' : ''} onClick={() => setView('2d')}>2D план</button><button type="button" className={view === '3d' ? 'active' : ''} onClick={() => setView('3d')}>3D вид</button></div>
           {view === '3d' && <div className="angle-control"><button type="button" onClick={() => setAngle((a) => a - 15)}>↶</button><span>{angle}°</span><button type="button" onClick={() => setAngle((a) => a + 15)}>↷</button></div>}
           <div className="stage-hint">{view === '2d' ? 'Перетаскивайте помещения; круглый маркер меняет размер. План автоматически вписывается в рабочую область.' : 'Вращайте модель мышью или пальцем; клик по стене или полу открывает параметры.'}</div>
         </div>
         <div className="planner-canvas">
-          {view === '2d' ? <FloorPlan2D project={project} selected={selected} setSelected={setSelected} onDragRoom={dragRoom} onResizeRoom={resizeRoom} /> : <FloorPlan3D project={project} selected={selected} setSelected={setSelected} angle={angle} />}
+          {view === '2d' ? <FloorPlan2D project={project} selected={selected} setSelected={setSelected} onDragRoom={dragRoom} onResizeRoom={resizeRoom} tool={tool} layer={layer} engineeringType={engineeringType} onAddFreeWall={addFreeWall} onAddEngineering={addEngineeringPoint} /> : <FloorPlan3D project={project} selected={selected} setSelected={setSelected} angle={angle} />}
         </div>
         <div className="planner-scale"><i /><span>100 см</span></div>
       </section>
 
       <aside className="planner-inspector">
-        <div className="planner-panel-head"><div><span>ПАРАМЕТРЫ</span><strong>{selectedRoom ? selectedRoom.name : selectedWall ? selectedWall.name : 'Выберите объект'}</strong></div></div>
+        <div className="planner-panel-head"><div><span>ПАРАМЕТРЫ</span><strong>{selectedRoom ? selectedRoom.name : selectedWall ? selectedWall.name : selectedEngineering ? (ENGINEERING_ITEMS[selectedEngineering.type]?.label || 'Инженерная точка') : 'Выберите объект'}</strong></div></div>
         {selectedRoom && <RoomInspector room={selectedRoom} side={selected.side || 'north'} onRoomChange={updateRoom} onWallChange={updateRoomWall} onDelete={deleteSelectedRoom} onDuplicate={duplicateRoom} />}
         {selectedWall && <FreeWallInspector wall={selectedWall} onChange={updateFreeWall} onDelete={deleteSelectedWall} />}
+        {selectedEngineering && <EngineeringInspector item={selectedEngineering} layer={selected.layer} onChange={updateEngineeringPoint} onDelete={deleteEngineeringPoint} />}
       </aside>
     </div>}
 
     {tab === 'materials' && <MaterialsView project={project} onPriceChange={(key, value) => commit((current) => ({ ...current, prices: { ...(current.prices || {}), [key]: value === '' ? '' : Math.max(0, Number(value) || 0) } }))} />}
     {tab === 'readiness' && <ReadinessView project={project} />}
+    {tab === 'validation' && <ValidationView project={project} />}
 
     {notice && <div className="planner-toast" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice('')}>×</button></div>}
   </main>
