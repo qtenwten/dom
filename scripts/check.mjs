@@ -9,6 +9,7 @@ const required = [
   'src/planner.jsx',
   'src/planner.css',
   'src/planner-engine.js',
+  'src/planner-equipment.js',
   'src/planner-advanced.js',
   'src/planner-advanced.jsx',
   'content.js',
@@ -20,7 +21,7 @@ const required = [
 ]
 
 for (const file of required) await access(file)
-for (const file of ['content.js', 'surface-content.js', 'guide-enrichment.js', 'sw.js', 'src/planner-engine.js', 'src/planner-advanced.js']) {
+for (const file of ['content.js', 'surface-content.js', 'guide-enrichment.js', 'sw.js', 'src/planner-engine.js', 'src/planner-equipment.js', 'src/planner-advanced.js']) {
   const result = spawnSync(process.execPath, ['--check', file], { stdio: 'inherit' })
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
@@ -28,6 +29,7 @@ for (const file of ['content.js', 'surface-content.js', 'guide-enrichment.js', '
 
 const { DOM_CATEGORIES, DOM_GUIDES, DOM_SOURCES, DOM_ROOMS, DOM_SURFACE_FAMILIES, DOM_JOINT_TYPES, DOM_BASEBOARD_TYPES } = await import('../content.js')
 const { getLemanaShopping, getGuidePracticalDetail } = await import('../guide-enrichment.js')
+const { getEquipmentProfile, equipmentPlanGeometry } = await import('../src/planner-equipment.js')
 const {
   analyzeSurfaceLayout,
   buildTopologyRooms,
@@ -118,6 +120,19 @@ if (!workPlan.some((task) => task.id === 'measure') || !workPlan.some((task) => 
 const plannerSource = await readFile('src/planner.jsx', 'utf8')
 for (const token of ['TopologyRoomInspector', 'RouteToolbox', 'UnderlayPanel', 'DocumentsView', 'WorkPlanView', 'buildTopologyRooms', 'phaseView']) {
   if (!plannerSource.includes(token)) throw new Error(`Advanced planner feature missing: ${token}`)
+}
+
+const socketProfile = getEquipmentProfile({ type: 'socket', profileId: 'ru-iek-solid-68x45' })
+if (socketProfile?.diameterMm !== 68 || socketProfile?.depthMm !== 45 || socketProfile?.centerSpacingMm !== 71 || socketProfile?.screwSpacingMm !== 60) {
+  throw new Error('Russian socket-box profile dimensions are broken.')
+}
+const deepSocket = getEquipmentProfile({ type: 'socket', profileId: 'ru-iek-deep-68x60' })
+if (deepSocket?.depthMm !== 60) throw new Error('Deep installation-box profile is broken.')
+const drainProfile = getEquipmentProfile({ type: 'drain', profileId: 'ru-drain-dn110' })
+if (drainProfile?.diameterMm !== 110) throw new Error('Drain DN110 profile is broken.')
+const radiatorFootprint = equipmentPlanGeometry({ type: 'radiator', profileId: 'custom-radiator', widthMm: 1000, heightMm: 500, depthMm: 100 })
+if (Math.abs(radiatorFootprint.widthCm - 100) > .001 || Math.abs(radiatorFootprint.heightCm - 10) > .001) {
+  throw new Error('Equipment plan footprint must use width × depth for rectangular equipment.')
 }
 
 const manifest = JSON.parse(await readFile('manifest.webmanifest', 'utf8'))

@@ -38,6 +38,14 @@ import {
   UnderlayPanel,
   WorkPlanView,
 } from './planner-advanced.jsx'
+import {
+  DEFAULT_PROFILE_BY_TYPE,
+  applyEquipmentProfile,
+  equipmentBasis,
+  equipmentPlanGeometry,
+  equipmentProfilesFor,
+  getEquipmentProfile,
+} from './planner-equipment.js'
 import './planner.css'
 
 const STORAGE_KEY = 'qsen-dom:planner-v1'
@@ -907,10 +915,22 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom,
     {engineeringItems.map((item) => {
       const spec = ENGINEERING_ITEMS[item.type] || { glyph: '?', label: item.type }
       const active = selected.type === 'engineering' && selected.id === item.id
-      return <g key={item.id} className={'engineering-point layer-' + layer + (active ? ' active' : '')} transform={'translate(' + item.x + ' ' + item.y + ')'} onPointerDown={(e) => { if (tool !== 'select') return; e.stopPropagation(); setSelected({ type: 'engineering', layer, id: item.id }) }}>
-        <circle r="17" />
-        <text textAnchor="middle" dominantBaseline="central">{spec.glyph}</text>
-        <title>{spec.label} · {item.height} см</title>
+      const geometry = equipmentPlanGeometry(item)
+      const hitRadius = Math.max(14, Math.max(geometry.widthCm, geometry.heightCm) / 2 + 7)
+      const rotation = item.rotationDeg || 0
+      const shape = geometry.shape === 'rect'
+        ? <rect className="engineering-footprint" x={-geometry.widthCm / 2} y={-geometry.heightCm / 2} width={geometry.widthCm} height={geometry.heightCm} rx={Math.min(2, geometry.heightCm / 5)} />
+        : geometry.shape === 'pair' || geometry.posts > 1
+          ? <g className="engineering-footprint engineering-footprint--posts">{Array.from({ length: geometry.posts }, (_, index) => {
+            const offset = (index - (geometry.posts - 1) / 2) * geometry.spacingCm
+            return <circle key={index} cx={offset} cy="0" r={geometry.diameterCm / 2} />
+          })}</g>
+          : <circle className="engineering-footprint" r={geometry.diameterCm / 2} />
+      return <g key={item.id} className={'engineering-point layer-' + layer + (active ? ' active' : '')} transform={'translate(' + item.x + ' ' + item.y + ') rotate(' + rotation + ')'} onPointerDown={(e) => { if (tool !== 'select') return; e.stopPropagation(); setSelected({ type: 'engineering', layer, id: item.id }) }}>
+        <circle className="engineering-hit" r={hitRadius} />
+        {shape}
+        <g transform={'rotate(' + (-rotation) + ')'}><text className="engineering-glyph" textAnchor="middle" dominantBaseline="central">{spec.glyph}</text></g>
+        <title>{spec.label} · отметка {item.height} см · {Math.round(geometry.widthCm * 10)}×{Math.round(geometry.heightCm * 10)} мм</title>
       </g>
     })}
     {drawStart && hoverSnap && tool === 'wall' && <g className="planner-draw-preview" pointerEvents="none">
@@ -1432,20 +1452,46 @@ function EngineeringPalette({ layer, activeType, onChoose, onSelectMode }) {
   const items = engineeringItemsForLayer(layer)
   return <div className="engineering-palette">
     <div className="planner-panel-head"><div><span>{ENGINEERING_LAYERS[layer]?.short}</span><strong>{ENGINEERING_LAYERS[layer]?.label}</strong></div><button type="button" onClick={onSelectMode}>Выбрать</button></div>
-    <p>Выберите элемент и кликайте по плану. Координаты магнитятся к сетке, углам и серединам стен.</p>
-    <div className="engineering-palette__grid">{items.map(([key, item]) => <button key={key} type="button" className={activeType === key ? 'active' : ''} onClick={() => onChoose(key)}><b>{item.glyph}</b><span>{item.label}</span><small>{item.height} см</small></button>)}</div>
+    <p>Выберите элемент и кликайте по плану. Габарит на чертеже теперь соответствует выбранному типоразмеру. Высота — проектная отметка, а не универсальный норматив.</p>
+    <div className="engineering-palette__grid">{items.map(([key, item]) => {
+      const profile = getEquipmentProfile(key)
+      return <button key={key} type="button" className={activeType === key ? 'active' : ''} onClick={() => onChoose(key)}><b>{item.glyph}</b><span>{item.label}</span><small>{profile?.label || 'размер задаётся'}</small><em>старт {item.height} см</em></button>
+    })}</div>
   </div>
 }
 
 function EngineeringInspector({ item, layer, onChange, onDelete }) {
   const spec = ENGINEERING_ITEMS[item.type] || { label: item.type }
+  const profiles = equipmentProfilesFor(item.type)
+  const profile = getEquipmentProfile(item)
+  const geometry = equipmentPlanGeometry(item)
+  const isBoxDevice = item.type === 'socket' || item.type === 'switch'
+  const isRect = geometry.shape === 'rect'
   return <div className="planner-inspector__content">
-    <div className="engineering-inspector-title"><span>{ENGINEERING_LAYERS[layer]?.short}</span><div><small>Инженерная точка</small><strong>{spec.label}</strong></div></div>
+    <div className="engineering-inspector-title"><span>{ENGINEERING_LAYERS[layer]?.short}</span><div><small>Инженерный элемент</small><strong>{spec.label}</strong></div></div>
     <div className="planner-fields">
       <NumberInput label="X" value={item.x} unit="см" onChange={(x) => onChange({ x })} />
       <NumberInput label="Y" value={item.y} unit="см" onChange={(y) => onChange({ y })} />
-      <NumberInput label="Высота" value={item.height} unit="см" min={0} max={1000} onChange={(height) => onChange({ height })} />
+      <NumberInput label="Отметка от пола" value={item.height} unit="см" min={0} max={1000} onChange={(height) => onChange({ height })} />
+      <NumberInput label="Поворот" value={item.rotationDeg || 0} unit="°" min={-360} max={360} onChange={(rotationDeg) => onChange({ rotationDeg })} />
     </div>
+    <div className="engineering-standard-note"><b>Отметка не считается универсальным стандартом.</b><span>{spec.heightHint || 'Задайте её по проекту и паспорту оборудования.'}</span></div>
+    {profiles.length > 0 && <SelectInput label="Типоразмер / профиль" value={item.profileId || DEFAULT_PROFILE_BY_TYPE[item.type]} options={profiles.map(([key, value]) => [key, value.label])} onChange={(profileId) => onChange(applyEquipmentProfile(item, profileId))} />}
+    {isBoxDevice && <NumberInput label="Постов в рамке" value={item.posts || 1} unit="шт" min={1} max={8} onChange={(posts) => onChange({ posts })} />}
+    <div className="planner-section-head engineering-size-head"><strong>Фактический габарит</strong><span>мм</span></div>
+    <div className="planner-fields compact">
+      {!isRect && <NumberInput label="Диаметр" value={item.diameterMm || 0} unit="мм" min={0} max={2000} onChange={(diameterMm) => onChange({ diameterMm, widthMm: diameterMm, heightMm: diameterMm })} />}
+      {isRect && <>
+        <NumberInput label="Ширина" value={item.widthMm || 0} unit="мм" min={0} max={5000} onChange={(widthMm) => onChange({ widthMm })} />
+        <NumberInput label="Высота корпуса" value={item.heightMm || 0} unit="мм" min={0} max={5000} onChange={(heightMm) => onChange({ heightMm })} />
+      </>}
+      <NumberInput label="Глубина" value={item.depthMm || 0} unit="мм" min={0} max={2000} onChange={(depthMm) => onChange({ depthMm })} />
+      {(item.centerSpacingMm > 0 || isBoxDevice || geometry.shape === 'pair') && <NumberInput label="Межосевое" value={item.centerSpacingMm || 0} unit="мм" min={0} max={1000} onChange={(centerSpacingMm) => onChange({ centerSpacingMm })} />}
+      {isBoxDevice && <NumberInput label="Винты" value={item.screwSpacingMm || 0} unit="мм" min={0} max={1000} onChange={(screwSpacingMm) => onChange({ screwSpacingMm })} />}
+      {isBoxDevice && <NumberInput label="Коронка min" value={item.holeMinMm || 0} unit="мм" min={0} max={1000} onChange={(holeMinMm) => onChange({ holeMinMm })} />}
+      {isBoxDevice && <NumberInput label="Коронка max" value={item.holeMaxMm || 0} unit="мм" min={0} max={1000} onChange={(holeMaxMm) => onChange({ holeMaxMm })} />}
+    </div>
+    {equipmentBasis(item) && <div className="engineering-profile-basis"><b>{profile?.label}</b><span>{equipmentBasis(item)}</span><small>Если выбранная серия отличается — введите паспортные размеры вручную.</small></div>}
     <TextInput label="Примечание" value={item.note || ''} onChange={(note) => onChange({ note })} />
     <div className="planner-danger-actions"><button type="button" onClick={onDelete}>Удалить точку</button></div>
   </div>
@@ -1706,7 +1752,8 @@ export default function PlannerPage() {
   const addEngineeringPoint = (layerKey, type, point) => {
     const spec = ENGINEERING_ITEMS[type]
     if (!spec || spec.layer !== layerKey) return
-    const item = { id: uid('eng'), type, x: round(point.x, 1), y: round(point.y, 1), height: spec.height, note: '' }
+    const base = { id: uid('eng'), type, x: round(point.x, 1), y: round(point.y, 1), height: spec.height, note: '' }
+    const item = normalizeEngineering({ [layerKey]: [base] })[layerKey][0]
     commit((current) => {
       const engineering = normalizeEngineering(current.engineering)
       return {

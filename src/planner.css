@@ -181,3 +181,115 @@
 .plan-sheet svg{display:block;width:100%;height:300px;background:#fff}.sheet-room{fill:#edf1eb;stroke:#787d75;stroke-width:1.5}.sheet-room.legacy{fill:#f4f0e6}.plan-sheet svg text{font-size:11px;fill:#3e423a;paint-order:stroke;stroke:#fff;stroke-width:3px}.sheet-wall{stroke:#2e312c;stroke-width:7;stroke-linecap:round}.sheet-route{fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}.sheet-route.electrical{stroke:#c28a16}.sheet-route.plumbing{stroke:#2e7592}.sheet-route.heating{stroke:#a94d3e}.sheet-point circle{fill:#fff;stroke:#555;stroke-width:2}.sheet-point text{font-size:7px!important;stroke-width:2px!important;font-weight:900}
 @media(max-width:900px){.plan-sheet-grid{grid-template-columns:1fr}}
 @media print{.plan-sheet-grid{grid-template-columns:1fr 1fr!important}.plan-sheet{break-inside:avoid;background:#fff!important}.plan-sheet svg{height:90mm!important}}
+
+
+/* Planner layout + RU equipment sizing audit */
+.planner-workspace{
+  grid-template-columns:minmax(250px,280px) minmax(0,1fr) minmax(310px,340px);
+  min-height:0;
+  align-items:stretch;
+}
+.planner-objects,.planner-inspector{
+  min-width:0;
+  overflow-x:hidden;
+}
+.planner-stage{
+  display:grid;
+  grid-template-rows:auto auto minmax(560px,1fr);
+  min-height:0;
+}
+.planner-layerbar{min-width:0;grid-template-columns:repeat(4,minmax(135px,1fr));overflow-x:auto;scrollbar-width:thin}
+.planner-stage-toolbar{min-width:0;min-height:48px}
+.planner-canvas{min-width:0;min-height:560px;height:100%}
+.planner-svg{min-width:0;min-height:0;height:100%;max-height:none}
+.planner-three{min-height:560px}
+.engineering-palette{min-width:0;overflow:hidden}
+.engineering-palette__grid{grid-template-columns:minmax(0,1fr);gap:7px}
+.engineering-palette__grid button{
+  min-width:0;
+  grid-template-columns:36px minmax(0,1fr) auto;
+  grid-template-rows:auto auto;
+  column-gap:9px;
+  row-gap:2px;
+  padding:9px 10px;
+}
+.engineering-palette__grid button b{grid-row:1/3;width:34px;height:34px}
+.engineering-palette__grid button span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.engineering-palette__grid button small{
+  grid-column:2/4;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:9px;
+}
+.engineering-palette__grid button em{
+  grid-column:3;
+  grid-row:1;
+  align-self:center;
+  white-space:nowrap;
+  font-style:normal;
+  font-size:8px;
+  color:#8b6a2d;
+}
+.engineering-point .engineering-hit{fill:transparent;stroke:none;pointer-events:all}
+.engineering-point .engineering-footprint{fill:#fffdf8;stroke-width:1.8;vector-effect:non-scaling-stroke}
+.engineering-point.layer-electrical .engineering-footprint{stroke:#c28a16}
+.engineering-point.layer-plumbing .engineering-footprint{stroke:#2e7592}
+.engineering-point.layer-heating .engineering-footprint{stroke:#a94d3e}
+.engineering-point.active .engineering-footprint{stroke-width:3;filter:drop-shadow(0 1px 2px rgba(0,0,0,.22))}
+.engineering-point .engineering-glyph{
+  font-size:6px;
+  font-weight:900;
+  pointer-events:none;
+  paint-order:stroke;
+  stroke:#fffdf8;
+  stroke-width:2px;
+  stroke-linejoin:round;
+}
+.engineering-point.layer-electrical .engineering-glyph{fill:#76500a}
+.engineering-point.layer-plumbing .engineering-glyph{fill:#18526b}
+.engineering-point.layer-heating .engineering-glyph{fill:#7d3126}
+.engineering-standard-note,.engineering-profile-basis{
+  display:grid;
+  gap:3px;
+  margin:10px 0;
+  padding:9px 10px;
+  border-radius:9px;
+  font-size:10px;
+  line-height:1.45;
+}
+.engineering-standard-note{background:#f5ecd6;color:#684e1e}
+.engineering-profile-basis{background:#eaf1ed;color:#294b40}
+.engineering-standard-note b,.engineering-profile-basis b{font-size:10px}
+.engineering-standard-note span,.engineering-profile-basis span,.engineering-profile-basis small{font-size:9px;line-height:1.45}
+.engineering-profile-basis small{color:#607069}
+.engineering-size-head{margin-top:14px;padding-top:10px;border-top:1px solid rgba(28,31,27,.11)}
+@media(max-width:1180px){
+  .planner-workspace{grid-template-columns:minmax(220px,240px) minmax(0,1fr) minmax(280px,300px)}
+  .planner-stage{grid-template-rows:auto auto minmax(520px,1fr)}
+  .planner-canvas,.planner-three{min-height:520px}
+  .engineering-palette__grid button{grid-template-columns:32px minmax(0,1fr)}
+  .engineering-palette__grid button em{grid-column:2;grid-row:2;justify-self:end}
+  .engineering-palette__grid button small{grid-column:2;grid-row:2;padding-right:54px}
+}
+@media(max-width:900px){
+  .planner-workspace{display:flex}
+  .planner-stage{order:-1;display:grid;grid-template-rows:auto auto minmax(500px,1fr)}
+  .planner-canvas,.planner-three{min-height:500px}
+  .planner-layerbar{grid-template-columns:repeat(4,minmax(145px,1fr))}
+  .planner-objects,.planner-inspector{overflow:visible}
+}
+@media(max-width:600px){
+  .planner-stage{grid-template-rows:auto auto minmax(430px,1fr)}
+  .planner-canvas,.planner-three{min-height:430px}
+  .planner-layerbar{display:flex}
+  .engineering-palette__grid button{grid-template-columns:36px minmax(0,1fr) auto}
+  .engineering-palette__grid button small{grid-column:2/4;grid-row:2;padding-right:0}
+  .engineering-palette__grid button em{grid-column:3;grid-row:1}
+}

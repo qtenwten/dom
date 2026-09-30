@@ -1,3 +1,5 @@
+import { equipmentProductName, getEquipmentProfile, normalizeEquipmentFields } from './planner-equipment.js'
+
 const SIDES = ['north', 'east', 'south', 'west']
 
 export const ENGINEERING_LAYERS = {
@@ -8,15 +10,15 @@ export const ENGINEERING_LAYERS = {
 }
 
 export const ENGINEERING_ITEMS = {
-  socket: { layer: 'electrical', label: 'Розетка', glyph: 'Р', height: 30 },
-  switch: { layer: 'electrical', label: 'Выключатель', glyph: 'В', height: 90 },
-  light: { layer: 'electrical', label: 'Светильник', glyph: 'С', height: 250 },
-  junction: { layer: 'electrical', label: 'Распредкоробка', glyph: 'К', height: 220 },
-  water: { layer: 'plumbing', label: 'Водорозетка', glyph: 'В', height: 60 },
-  drain: { layer: 'plumbing', label: 'Канализация', glyph: 'К', height: 20 },
-  riser: { layer: 'plumbing', label: 'Стояк', glyph: 'СТ', height: 0 },
-  radiator: { layer: 'heating', label: 'Радиатор', glyph: 'РД', height: 15 },
-  manifold: { layer: 'heating', label: 'Коллектор', glyph: 'КЛ', height: 50 },
+  socket: { layer: 'electrical', label: 'Розетка', glyph: 'Р', height: 30, heightHint: 'Стартовая отметка, не обязательный норматив' },
+  switch: { layer: 'electrical', label: 'Выключатель', glyph: 'В', height: 90, heightHint: 'ПУЭ рекомендует до 1 м со стороны ручки двери; проектная отметка редактируется' },
+  light: { layer: 'electrical', label: 'Световая точка', glyph: 'С', height: 250, heightHint: 'Высота зависит от потолка и выбранного светильника' },
+  junction: { layer: 'electrical', label: 'Распредкоробка', glyph: 'К', height: 220, heightHint: 'Проектная отметка; способ соединения и доступность задаются проектом' },
+  water: { layer: 'plumbing', label: 'Водорозетка', glyph: 'В', height: 60, heightHint: 'Проектная отметка по конкретному сантехприбору' },
+  drain: { layer: 'plumbing', label: 'Канализация', glyph: 'К', height: 20, heightHint: 'Отметка зависит от прибора, уклона и трассы' },
+  riser: { layer: 'plumbing', label: 'Стояк', glyph: 'СТ', height: 0, heightHint: 'Точка вертикальной инженерной магистрали' },
+  radiator: { layer: 'heating', label: 'Радиатор', glyph: 'РД', height: 15, heightHint: 'Габарит и отметки задаются по паспорту выбранного радиатора' },
+  manifold: { layer: 'heating', label: 'Коллектор', glyph: 'КЛ', height: 50, heightHint: 'Размер зависит от числа выходов и шкафа' },
 }
 
 export const WALL_ASSEMBLIES = {
@@ -103,6 +105,7 @@ export function normalizeEngineering(input) {
         y: clamp(item.y, 0, 5000),
         height: clamp(item.height ?? ENGINEERING_ITEMS[type]?.height ?? 30, 0, 1000),
         note: String(item.note || '').slice(0, 120),
+        ...normalizeEquipmentFields(item, type),
       }
     }).filter((item) => item.type)
   })
@@ -173,29 +176,42 @@ export function buildDrywallTakeoff(project) {
 export function buildEngineeringTakeoff(project) {
   const rows = []
   const engineering = normalizeEngineering(project.engineering)
-  const count = (layer, type) => engineering[layer].filter((item) => item.type === type).length
-  const sockets = count('electrical', 'socket')
-  const switches = count('electrical', 'switch')
-  const lights = count('electrical', 'light')
-  const junctions = count('electrical', 'junction')
-  const waters = count('plumbing', 'water')
-  const drains = count('plumbing', 'drain')
-  const risers = count('plumbing', 'riser')
-  const radiators = count('heating', 'radiator')
-  const manifolds = count('heating', 'manifold')
   const add = (group, name, qty, note) => {
     if (qty > 0) rows.push({ group, name, qty, unit: 'шт', reserve: '0%', note })
   }
-  add('Электрика · точки', 'Розетка', sockets, 'Количество точек из плана')
-  add('Электрика · точки', 'Выключатель', switches, 'Количество точек из плана')
-  add('Электрика · точки', 'Световая точка', lights, 'Количество точек из плана')
-  add('Электрика · точки', 'Распределительная коробка', junctions, 'Количество точек из плана')
-  add('Электрика · монтаж', 'Подрозетник Ø68', sockets + switches, 'Минимум по нанесённым розеткам и выключателям')
-  add('Сантехника · точки', 'Водорозетка', waters, 'Количество точек ХВС/ГВС уточняется по оборудованию')
-  add('Сантехника · точки', 'Канализационная точка', drains, 'Диаметр и уклоны уточняются отдельно')
-  add('Сантехника · точки', 'Стояк', risers, 'Опорные точки инженерной схемы')
-  add('Отопление · точки', 'Радиатор', radiators, 'Количество приборов на плане')
-  add('Отопление · точки', 'Коллектор', manifolds, 'Количество коллекторных узлов')
+
+  const electricalItems = [...engineering.electrical]
+  const sockets = electricalItems.filter((item) => item.type === 'socket')
+  const switches = electricalItems.filter((item) => item.type === 'switch')
+  const lights = electricalItems.filter((item) => item.type === 'light')
+  const junctions = electricalItems.filter((item) => item.type === 'junction')
+
+  add('Электрика · точки', 'Розетка', sockets.reduce((sum, item) => sum + (item.posts || 1), 0), 'Количество постов из плана')
+  add('Электрика · точки', 'Выключатель', switches.reduce((sum, item) => sum + (item.posts || 1), 0), 'Количество постов из плана')
+  add('Электрика · точки', 'Световая точка', lights.length, 'Количество точек из плана')
+
+  const boxGroups = new Map()
+  ;[...sockets, ...switches, ...junctions].forEach((item) => {
+    const name = equipmentProductName(item)
+    const count = item.type === 'socket' || item.type === 'switch' ? (item.posts || 1) : 1
+    boxGroups.set(name, (boxGroups.get(name) || 0) + count)
+  })
+  boxGroups.forEach((qty, name) => add('Электрика · монтаж', name, qty, 'Типоразмер берётся из профиля каждой точки; размеры можно изменить вручную'))
+
+  const waters = engineering.plumbing.filter((item) => item.type === 'water')
+  const drains = engineering.plumbing.filter((item) => item.type === 'drain')
+  const risers = engineering.plumbing.filter((item) => item.type === 'riser')
+  const plumbingGroups = new Map()
+  ;[...waters, ...drains, ...risers].forEach((item) => {
+    const name = equipmentProductName(item)
+    plumbingGroups.set(name, (plumbingGroups.get(name) || 0) + (item.posts || 1))
+  })
+  plumbingGroups.forEach((qty, name) => add('Сантехника · точки', name, qty, 'Размер/подключение выбраны в профиле точки'))
+
+  const radiators = engineering.heating.filter((item) => item.type === 'radiator')
+  const manifolds = engineering.heating.filter((item) => item.type === 'manifold')
+  add('Отопление · точки', 'Радиатор', radiators.length, 'Габариты задаются по конкретной модели')
+  add('Отопление · точки', 'Коллектор', manifolds.length, 'Габариты задаются по числу выходов и шкафу')
   return rows
 }
 
@@ -235,6 +251,27 @@ export function validateProject(project) {
     })
   })
   const engineering = normalizeEngineering(project.engineering)
+  const allEngineering = [...engineering.electrical, ...engineering.plumbing, ...engineering.heating]
+  allEngineering.forEach((item) => {
+    const profile = getEquipmentProfile(item)
+    if ((item.type === 'socket' || item.type === 'switch') && item.holeMinMm > 0 && item.holeMaxMm > 0 && item.holeMinMm > item.holeMaxMm) {
+      push('error', 'Неверный диапазон коронки', 'Минимальный диаметр отверстия больше максимального у ' + (profile?.label || item.type) + '.')
+    }
+    if ((item.type === 'socket' || item.type === 'switch') && (item.posts || 1) > 1 && !(item.centerSpacingMm > 0)) {
+      push('warn', 'Блок электроустановочных изделий без межосевого', 'Для нескольких постов задайте расстояние между центрами согласно выбранной серии.')
+    }
+    if (item.type === 'switch' && item.height > 100) {
+      push('info', 'Выключатель выше рекомендуемой отметки ПУЭ', 'Для жилых помещений ПУЭ 7.1.51 рекомендует установку выключателей со стороны дверной ручки на высоте до 1 м. Это рекомендация, а не универсальный запрет.')
+    }
+  })
+
+  const wetRooms = (project.rooms || []).filter((room) => /ванн|душ/i.test(room.name || ''))
+  engineering.electrical.forEach((item) => {
+    if (item.type !== 'socket' && item.type !== 'switch') return
+    const wetRoom = wetRooms.find((room) => item.x >= room.x && item.x <= room.x + room.width && item.y >= room.y && item.y <= room.y + room.depth)
+    if (wetRoom) push('warn', wetRoom.name + ': нужна проверка электрических зон', 'Для ванной/душевой применяйте актуальные зоны и требования ГОСТ Р 50571.7.701-2024. Одних координат комнаты недостаточно — нужны контуры ванны/душа.')
+  })
+
   if (engineering.plumbing.some((item) => item.type === 'drain') && !engineering.plumbing.some((item) => item.type === 'riser')) {
     push('warn', 'Есть канализация, но не указан стояк', 'Добавьте стояк как опорную точку перед прокладкой трасс.')
   }
