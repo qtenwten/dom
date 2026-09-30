@@ -12,9 +12,36 @@ import {
   snapProjectPoint,
   validateProject,
 } from './planner-engine.js'
+import {
+  FLOOR_LAYOUT_DEFAULTS,
+  ROUTE_TYPES,
+  TILE_LAYOUT_DEFAULT,
+  WALL_PHASES,
+  analyzeRoomFloorLayout,
+  buildAdvancedTakeoff,
+  buildTopologyRooms,
+  calibrateUnderlay,
+  normalizeRoutes,
+  normalizeTopologyMeta,
+  normalizeUnderlay,
+  packageTakeoff,
+  snapshotProject,
+  topologyMetaFor,
+  validateAdvancedProject,
+  wallVisibleForPhase,
+} from './planner-advanced.js'
+import {
+  DocumentsView,
+  RouteInspector,
+  RouteToolbox,
+  TopologyRoomInspector,
+  UnderlayPanel,
+  WorkPlanView,
+} from './planner-advanced.jsx'
 import './planner.css'
 
 const STORAGE_KEY = 'qsen-dom:planner-v1'
+const VERSIONS_KEY = 'qsen-dom:planner-versions-v1'
 const SIDES = ['north', 'east', 'south', 'west']
 const SIDE_NAMES = { north: 'Северная', east: 'Восточная', south: 'Южная', west: 'Западная' }
 const MATERIALS = {
@@ -60,6 +87,11 @@ function makeWall(overrides = {}) {
     thickness: 120,
     finish: 'plaster-paint',
     assembly: '',
+    phase: 'existing',
+    reinforcement: false,
+    reinforcementHeight: 80,
+    loadKg: 0,
+    tileLayout: { ...TILE_LAYOUT_DEFAULT },
     openings: [],
     ...overrides,
   }
@@ -76,6 +108,11 @@ function makeRoom(index = 0, overrides = {}) {
     height: 270,
     floorFinish: 'laminate',
     ceilingFinish: 'paint',
+    diagonalA: 0,
+    diagonalB: 0,
+    toleranceMm: 10,
+    floorLayout: {},
+    demolition: { floor: false, wallFinish: false, ceiling: false, floorThickness: 5 },
     walls: {
       north: makeWall(),
       east: makeWall(),
@@ -100,6 +137,11 @@ function makeFreeWall(index = 0) {
     material: 'drywall',
     finish: 'plaster-paint',
     assembly: 'drywall-75-single',
+    phase: 'new',
+    reinforcement: false,
+    reinforcementHeight: 80,
+    loadKg: 0,
+    tileLayout: { ...TILE_LAYOUT_DEFAULT },
     openings: [],
   }
 }
@@ -139,12 +181,16 @@ function sampleProject() {
   bath.walls.west.openings = [{ id: 'door-2', type: 'door', width: 70, height: 200, offset: 75, sill: 0 }]
 
   return {
-    version: 1,
+    version: 2,
     name: 'Моя квартира',
     grid: 20,
     rooms: [living, kitchen, bedroom, bath],
     freeWalls: [],
     engineering: { electrical: [], plumbing: [], heating: [] },
+    routes: [],
+    underlay: null,
+    topologyMeta: {},
+    packageOverrides: {},
     prices: {},
   }
 }
@@ -165,6 +211,16 @@ function normalizeProject(input) {
         width: clamp(raw.width, 50, 5000),
         depth: clamp(raw.depth, 50, 5000),
         height: clamp(raw.height, 180, 1000),
+        diagonalA: clamp(raw.diagonalA || 0, 0, 10000),
+        diagonalB: clamp(raw.diagonalB || 0, 0, 10000),
+        toleranceMm: clamp(raw.toleranceMm || 10, 1, 100),
+        floorLayout: raw.floorLayout && typeof raw.floorLayout === 'object' ? raw.floorLayout : {},
+        demolition: {
+          floor: Boolean(raw.demolition?.floor),
+          wallFinish: Boolean(raw.demolition?.wallFinish),
+          ceiling: Boolean(raw.demolition?.ceiling),
+          floorThickness: clamp(raw.demolition?.floorThickness || 5, 1, 30),
+        },
       })
       room.walls = {}
       SIDES.forEach((side) => {
@@ -173,6 +229,11 @@ function normalizeProject(input) {
           ...src,
           assembly: src.material === 'drywall' ? (WALL_ASSEMBLIES[src.assembly] ? src.assembly : 'drywall-75-single') : '',
           thickness: clamp(src.thickness || 120, 40, 1000),
+          phase: WALL_PHASES[src.phase] ? src.phase : 'existing',
+          reinforcement: Boolean(src.reinforcement),
+          reinforcementHeight: clamp(src.reinforcementHeight || 80, 20, 200),
+          loadKg: clamp(src.loadKg || 0, 0, 1000),
+          tileLayout: src.tileLayout && typeof src.tileLayout === 'object' ? { ...TILE_LAYOUT_DEFAULT, ...src.tileLayout } : { ...TILE_LAYOUT_DEFAULT },
           openings: Array.isArray(src.openings) ? src.openings.slice(0, 30).map((o) => ({
             id: o.id || uid('opening'),
             type: o.type === 'window' ? 'window' : 'door',
@@ -197,9 +258,18 @@ function normalizeProject(input) {
       height: clamp(raw.height, 180, 1000),
       thickness: clamp(raw.thickness, 40, 1000),
       assembly: raw.material === 'drywall' ? (WALL_ASSEMBLIES[raw.assembly] ? raw.assembly : 'drywall-75-single') : '',
+      phase: WALL_PHASES[raw.phase] ? raw.phase : 'new',
+      reinforcement: Boolean(raw.reinforcement),
+      reinforcementHeight: clamp(raw.reinforcementHeight || 80, 20, 200),
+      loadKg: clamp(raw.loadKg || 0, 0, 1000),
+      tileLayout: raw.tileLayout && typeof raw.tileLayout === 'object' ? { ...TILE_LAYOUT_DEFAULT, ...raw.tileLayout } : { ...TILE_LAYOUT_DEFAULT },
       openings: Array.isArray(raw.openings) ? raw.openings.slice(0, 30) : [],
     })) : [],
     engineering: normalizeEngineering(input.engineering),
+    routes: normalizeRoutes(input.routes),
+    underlay: normalizeUnderlay(input.underlay),
+    topologyMeta: normalizeTopologyMeta(input.topologyMeta),
+    packageOverrides: input.packageOverrides && typeof input.packageOverrides === 'object' ? input.packageOverrides : {},
     prices: input.prices && typeof input.prices === 'object' ? input.prices : {},
   }
 }
@@ -226,6 +296,7 @@ function projectMetrics(project) {
     let baseboard = 2 * (room.width + room.depth) / 100
     SIDES.forEach((side) => {
       const wall = room.walls[side]
+      if (!wallVisibleForPhase(wall, 'proposed')) return
       const len = roomWallLength(room, side)
       const gross = len * room.height / 10000
       const opening = wall.openings.reduce((sum, item) => sum + openingArea(item), 0)
@@ -249,15 +320,17 @@ function projectMetrics(project) {
     freeOpenings += wall.openings.length
   })
 
-  const floorArea = roomMetrics.reduce((s, item) => s + item.floor, 0)
+  const topologyRooms = buildTopologyRooms(project.freeWalls, 'proposed')
+  const topologyFloorArea = topologyRooms.reduce((sum, room) => sum + room.area, 0)
+  const floorArea = roomMetrics.reduce((s, item) => s + item.floor, 0) + topologyFloorArea
   const wallArea = roomMetrics.reduce((s, item) => s + item.wallNet, 0) + freeWallArea
-  const baseboard = roomMetrics.reduce((s, item) => s + item.baseboard, 0)
+  const baseboard = roomMetrics.reduce((s, item) => s + item.baseboard, 0) + topologyRooms.reduce((sum, room) => sum + room.perimeter, 0)
   return {
     floorArea,
     ceilingArea: floorArea,
     wallArea,
     baseboard,
-    roomCount: project.rooms.length,
+    roomCount: project.rooms.length + topologyRooms.length,
     openingCount: roomMetrics.reduce((s, item) => s + item.openings, 0) + freeOpenings,
     freeWallLength,
     roomMetrics,
@@ -292,6 +365,7 @@ function buildTakeoff(project) {
     ceilingGroups[room.ceilingFinish] = (ceilingGroups[room.ceilingFinish] || 0) + floorArea
     SIDES.forEach((side) => {
       const wall = room.walls[side]
+      if (!wallVisibleForPhase(wall, 'proposed')) return
       const gross = roomWallLength(room, side) * room.height / 10000
       const openings = wall.openings.reduce((sum, opening) => sum + openingArea(opening), 0)
       const net = Math.max(0, gross - openings)
@@ -305,10 +379,18 @@ function buildTakeoff(project) {
     })
   })
   project.freeWalls.forEach((wall) => {
+    if (!wallVisibleForPhase(wall, 'proposed')) return
     const net = Math.max(0, wallLengthFree(wall) / 100 * wall.height / 100 - wall.openings.reduce((sum, opening) => sum + openingArea(opening), 0))
     wallFinishGroups[wall.finish] = (wallFinishGroups[wall.finish] || 0) + net
     const key = wall.material + ':' + wall.thickness
     wallMaterialAreas[key] = (wallMaterialAreas[key] || 0) + net
+  })
+
+  const topologyRooms = buildTopologyRooms(project.freeWalls, 'proposed')
+  topologyRooms.forEach((room, index) => {
+    const meta = topologyMetaFor(project, room, index)
+    floorGroups[meta.floorFinish] = (floorGroups[meta.floorFinish] || 0) + room.area
+    ceilingGroups[meta.ceilingFinish] = (ceilingGroups[meta.ceilingFinish] || 0) + room.area
   })
 
   Object.entries(floorGroups).forEach(([key, area]) => {
@@ -340,7 +422,7 @@ function buildTakeoff(project) {
   const metrics = projectMetrics(project)
   add('Плинтус', 'Плинтус', metrics.baseboard * 1.08, 'м', '8%', 'Дверные проёмы вычтены')
   add('Грунтование', 'Грунтовка стен и потолка', (metrics.wallArea + metrics.ceilingArea) * 0.12, 'л', '≈20%', 'Ориентир 0,12 л/м² на один рабочий цикл')
-  rows.push(...buildDrywallTakeoff(project), ...buildEngineeringTakeoff(project))
+  rows.push(...buildDrywallTakeoff(project), ...buildEngineeringTakeoff(project), ...buildAdvancedTakeoff(project))
   return rows
 }
 
@@ -352,6 +434,9 @@ function NumberInput({ label, value, onChange, unit, min = 0, max = 9999, step =
 }
 function SelectInput({ label, value, onChange, options }) {
   return <label className="planner-field"><span>{label}</span><select value={value} onChange={(e) => onChange(e.target.value)}>{options.map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>
+}
+function ToggleInput({ label, checked, onChange, note }) {
+  return <label className="planner-toggle"><input type="checkbox" checked={Boolean(checked)} onChange={(e) => onChange(e.target.checked)} /><span><b>{label}</b>{note && <small>{note}</small>}</span></label>
 }
 
 function WallOpenings({ wall, wallLength, onChange }) {
@@ -397,19 +482,65 @@ function RoomInspector({ room, side, onRoomChange, onWallChange, onDelete, onDup
       <NumberInput label="Глубина" value={room.depth} unit="см" min={50} max={5000} onChange={(depth) => onRoomChange({ depth })} />
       <NumberInput label="Высота" value={room.height} unit="см" min={180} max={1000} onChange={(height) => onRoomChange({ height })} />
     </div>
+    <div className="planner-section-head"><strong>Контрольный обмер</strong><span>± {room.toleranceMm || 10} мм</span></div>
     <div className="planner-fields">
-      <SelectInput label="Пол" value={room.floorFinish} options={Object.entries(FLOORS)} onChange={(floorFinish) => onRoomChange({ floorFinish })} />
+      <NumberInput label="Диагональ A" value={room.diagonalA || 0} unit="см" min={0} max={10000} step={.1} onChange={(diagonalA) => onRoomChange({ diagonalA })} />
+      <NumberInput label="Диагональ B" value={room.diagonalB || 0} unit="см" min={0} max={10000} step={.1} onChange={(diagonalB) => onRoomChange({ diagonalB })} />
+      <NumberInput label="Допуск" value={room.toleranceMm || 10} unit="мм" min={1} max={100} onChange={(toleranceMm) => onRoomChange({ toleranceMm })} />
+    </div>
+    <div className="planner-fields">
+      <SelectInput label="Пол" value={room.floorFinish} options={Object.entries(FLOORS)} onChange={(floorFinish) => onRoomChange({ floorFinish, floorLayout: {} })} />
       <SelectInput label="Потолок" value={room.ceilingFinish} options={Object.entries(CEILINGS)} onChange={(ceilingFinish) => onRoomChange({ ceilingFinish })} />
     </div>
+    {FLOOR_LAYOUT_DEFAULTS[room.floorFinish] && (() => {
+      const defaults = FLOOR_LAYOUT_DEFAULTS[room.floorFinish]
+      const layout = { ...defaults, ...(room.floorLayout || {}) }
+      const analysis = analyzeRoomFloorLayout(room)
+      return <div className="planner-subsection">
+        <div className="planner-section-head"><strong>Раскладка пола</strong><span>{analysis?.boxes || 0} уп.</span></div>
+        <div className="planner-fields compact">
+          <NumberInput label="Ширина элемента" value={layout.width} unit="см" min={1} max={500} step={.1} onChange={(width) => onRoomChange({ floorLayout: { ...layout, width } })} />
+          <NumberInput label="Длина элемента" value={layout.height} unit="см" min={1} max={500} step={.1} onChange={(height) => onRoomChange({ floorLayout: { ...layout, height } })} />
+          <NumberInput label="Шов" value={layout.joint} unit="см" min={0} max={5} step={.1} onChange={(joint) => onRoomChange({ floorLayout: { ...layout, joint } })} />
+          <NumberInput label="В упаковке" value={layout.packageArea} unit="м²" min={.1} max={20} step={.01} onChange={(packageArea) => onRoomChange({ floorLayout: { ...layout, packageArea } })} />
+        </div>
+        {analysis?.warning && <div className="planner-mini-warning">⚠ {analysis.warning}</div>}
+      </div>
+    })()}
     <div className="planner-wall-tabs">{SIDES.map((key) => <button type="button" key={key} className={side === key ? 'active' : ''} onClick={() => onRoomChange({}, key)}>{SIDE_NAMES[key]}</button>)}</div>
     <div className="planner-wall-title"><div><small>Выбрана стена</small><strong>{SIDE_NAMES[side]} · {(length / 100).toFixed(2)} м</strong></div><span>{room.height} см</span></div>
     <div className="planner-fields">
       <NumberInput label="Толщина" value={wall.thickness} unit="мм" min={40} max={1000} onChange={(thickness) => onWallChange({ thickness })} />
       <SelectInput label="Материал" value={wall.material} options={Object.entries(MATERIALS).map(([k, v]) => [k, v.label])} onChange={(material) => onWallChange({ material, assembly: material === 'drywall' ? (wall.assembly || 'drywall-75-single') : '' })} />
       <SelectInput label="Отделка" value={wall.finish} options={Object.entries(FINISHES)} onChange={(finish) => onWallChange({ finish })} />
+      <SelectInput label="Статус" value={wall.phase || 'existing'} options={Object.entries(WALL_PHASES)} onChange={(phase) => onWallChange({ phase })} />
     </div>
-    {wall.material === 'drywall' && <SelectInput label="Пирог перегородки" value={wall.assembly || 'drywall-75-single'} options={Object.entries(WALL_ASSEMBLIES).map(([key, item]) => [key, item.label])} onChange={(assembly) => onWallChange({ assembly, thickness: WALL_ASSEMBLIES[assembly].thickness })} />}
+    {wall.material === 'drywall' && <>
+      <SelectInput label="Пирог перегородки" value={wall.assembly || 'drywall-75-single'} options={Object.entries(WALL_ASSEMBLIES).map(([key, item]) => [key, item.label])} onChange={(assembly) => onWallChange({ assembly, thickness: WALL_ASSEMBLIES[assembly].thickness })} />
+      <div className="planner-subsection">
+        <ToggleInput label="Закладная под нагрузку" checked={wall.reinforcement} onChange={(reinforcement) => onWallChange({ reinforcement })} note="Для ТВ, шкафов, бойлера и других тяжёлых предметов" />
+        <div className="planner-fields compact">
+          <NumberInput label="Расчётная нагрузка" value={wall.loadKg || 0} unit="кг" min={0} max={1000} onChange={(loadKg) => onWallChange({ loadKg })} />
+          {wall.reinforcement && <NumberInput label="Высота полосы" value={wall.reinforcementHeight || 80} unit="см" min={20} max={200} onChange={(reinforcementHeight) => onWallChange({ reinforcementHeight })} />}
+        </div>
+      </div>
+    </>}
+    {wall.finish === 'tile' && (() => {
+      const layout = { ...TILE_LAYOUT_DEFAULT, ...(wall.tileLayout || {}) }
+      return <div className="planner-subsection"><div className="planner-section-head"><strong>Раскладка плитки</strong><span>{layout.width}×{layout.height}</span></div><div className="planner-fields compact">
+        <NumberInput label="Ширина" value={layout.width} unit="см" min={1} max={300} step={.1} onChange={(width) => onWallChange({ tileLayout: { ...layout, width } })} />
+        <NumberInput label="Высота" value={layout.height} unit="см" min={1} max={300} step={.1} onChange={(height) => onWallChange({ tileLayout: { ...layout, height } })} />
+        <NumberInput label="Шов" value={layout.joint} unit="см" min={0} max={5} step={.1} onChange={(joint) => onWallChange({ tileLayout: { ...layout, joint } })} />
+      </div></div>
+    })()}
     <WallOpenings wall={wall} wallLength={length} onChange={(nextWall) => onWallChange(nextWall, true)} />
+    <div className="planner-subsection demolition-box">
+      <div className="planner-section-head"><strong>Демонтаж помещения</strong><span>слои</span></div>
+      <ToggleInput label="Снять напольное покрытие / стяжку" checked={room.demolition?.floor} onChange={(floor) => onRoomChange({ demolition: { ...room.demolition, floor } })} />
+      {room.demolition?.floor && <NumberInput label="Толщина снимаемого слоя" value={room.demolition.floorThickness || 5} unit="см" min={1} max={30} onChange={(floorThickness) => onRoomChange({ demolition: { ...room.demolition, floorThickness } })} />}
+      <ToggleInput label="Снять отделку стен" checked={room.demolition?.wallFinish} onChange={(wallFinish) => onRoomChange({ demolition: { ...room.demolition, wallFinish } })} />
+      <ToggleInput label="Демонтировать потолок" checked={room.demolition?.ceiling} onChange={(ceiling) => onRoomChange({ demolition: { ...room.demolition, ceiling } })} />
+    </div>
     <div className="planner-danger-actions"><button type="button" onClick={onDuplicate}>Дублировать</button><button type="button" onClick={onDelete}>Удалить помещение</button></div>
   </div>
 }
@@ -427,8 +558,21 @@ function FreeWallInspector({ wall, onChange, onDelete }) {
       <NumberInput label="Толщина" value={wall.thickness} unit="мм" min={40} max={1000} onChange={(thickness) => onChange({ thickness })} />
       <SelectInput label="Материал" value={wall.material} options={Object.entries(MATERIALS).map(([k, v]) => [k, v.label])} onChange={(material) => onChange({ material, assembly: material === 'drywall' ? (wall.assembly || 'drywall-75-single') : '' })} />
       <SelectInput label="Отделка" value={wall.finish} options={Object.entries(FINISHES)} onChange={(finish) => onChange({ finish })} />
+      <SelectInput label="Статус" value={wall.phase || 'new'} options={Object.entries(WALL_PHASES)} onChange={(phase) => onChange({ phase })} />
     </div>
-    {wall.material === 'drywall' && <SelectInput label="Пирог перегородки" value={wall.assembly || 'drywall-75-single'} options={Object.entries(WALL_ASSEMBLIES).map(([key, item]) => [key, item.label])} onChange={(assembly) => onChange({ assembly, thickness: WALL_ASSEMBLIES[assembly].thickness })} />}
+    {wall.material === 'drywall' && <>
+      <SelectInput label="Пирог перегородки" value={wall.assembly || 'drywall-75-single'} options={Object.entries(WALL_ASSEMBLIES).map(([key, item]) => [key, item.label])} onChange={(assembly) => onChange({ assembly, thickness: WALL_ASSEMBLIES[assembly].thickness })} />
+      <ToggleInput label="Закладная под нагрузку" checked={wall.reinforcement} onChange={(reinforcement) => onChange({ reinforcement })} note="Добавляет листовой материал в ведомость" />
+      <div className="planner-fields compact"><NumberInput label="Нагрузка" value={wall.loadKg || 0} unit="кг" min={0} max={1000} onChange={(loadKg) => onChange({ loadKg })} />{wall.reinforcement && <NumberInput label="Полоса" value={wall.reinforcementHeight || 80} unit="см" min={20} max={200} onChange={(reinforcementHeight) => onChange({ reinforcementHeight })} />}</div>
+    </>}
+    {wall.finish === 'tile' && (() => {
+      const layout = { ...TILE_LAYOUT_DEFAULT, ...(wall.tileLayout || {}) }
+      return <div className="planner-subsection"><div className="planner-section-head"><strong>Раскладка плитки</strong><span>{layout.width}×{layout.height}</span></div><div className="planner-fields compact">
+        <NumberInput label="Ширина" value={layout.width} unit="см" min={1} max={300} step={.1} onChange={(width) => onChange({ tileLayout: { ...layout, width } })} />
+        <NumberInput label="Высота" value={layout.height} unit="см" min={1} max={300} step={.1} onChange={(height) => onChange({ tileLayout: { ...layout, height } })} />
+        <NumberInput label="Шов" value={layout.joint} unit="см" min={0} max={5} step={.1} onChange={(joint) => onChange({ tileLayout: { ...layout, joint } })} />
+      </div></div>
+    })()}
     <div className="planner-wall-title"><div><small>Фактическая длина</small><strong>{(length / 100).toFixed(2)} м</strong></div><span>{wall.height} см</span></div>
     <WallOpenings wall={wall} wallLength={length} onChange={(nextWall) => onChange(nextWall, true)} />
     <div className="planner-danger-actions"><button type="button" onClick={onDelete}>Удалить стену</button></div>
@@ -444,18 +588,20 @@ function openingLine(room, side, opening) {
   return { x1: x + room.width, y1: y + opening.offset, x2: x + room.width, y2: y + opening.offset + opening.width }
 }
 
-function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom, tool, layer, engineeringType, onAddFreeWall, onAddEngineering }) {
+function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom, tool, layer, engineeringType, onAddFreeWall, onAddEngineering, routeDraft, onAddRoutePoint, phaseView, onCalibrateUnderlay }) {
   const svgRef = useRef(null)
   const dragRef = useRef(null)
   const resizeRef = useRef(null)
   const [drawStart, setDrawStart] = useState(null)
   const [hoverSnap, setHoverSnap] = useState(null)
+  const [calibrationPoints, setCalibrationPoints] = useState([])
 
   useEffect(() => {
     const onKey = (event) => {
       if (event.key === 'Escape') {
         setDrawStart(null)
         setHoverSnap(null)
+        setCalibrationPoints([])
       }
     }
     window.addEventListener('keydown', onKey)
@@ -464,6 +610,7 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom,
 
   useEffect(() => {
     if (tool !== 'wall') setDrawStart(null)
+    if (tool !== 'calibrate') setCalibrationPoints([])
     if (tool === 'select') setHoverSnap(null)
   }, [tool, layer])
 
@@ -472,6 +619,10 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom,
     const ys = []
     project.rooms.forEach((room) => { xs.push(room.x, room.x + room.width); ys.push(room.y, room.y + room.depth) })
     project.freeWalls.forEach((wall) => { xs.push(wall.x1, wall.x2); ys.push(wall.y1, wall.y2) })
+    if (project.underlay) {
+      xs.push(project.underlay.x, project.underlay.x + project.underlay.width)
+      ys.push(project.underlay.y, project.underlay.y + project.underlay.height)
+    }
     if (!xs.length) return { x: 0, y: 0, width: 1400, height: 900 }
     const pad = 120
     const minX = Math.min(...xs) - pad
@@ -486,7 +637,7 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom,
     const centerX = (minX + maxX) / 2
     const centerY = (minY + maxY) / 2
     return { x: centerX - width / 2, y: centerY - height / 2, width, height }
-  }, [project.rooms, project.freeWalls])
+  }, [project.rooms, project.freeWalls, project.underlay])
 
   const pointFromEvent = (event) => {
     const svg = svgRef.current
@@ -503,6 +654,21 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom,
 
   const handlePlanPointerDown = (event) => {
     if (event.button !== 0) return
+    if (tool === 'calibrate' && project.underlay) {
+      const point = pointFromEvent(event)
+      if (!calibrationPoints.length) {
+        setCalibrationPoints([point])
+      } else {
+        onCalibrateUnderlay(calibrationPoints[0], point)
+        setCalibrationPoints([])
+      }
+      return
+    }
+    if (tool === 'route') {
+      const point = pointSnapped(event, routeDraft?.at(-1) || null)
+      onAddRoutePoint(point)
+      return
+    }
     if (tool === 'wall') {
       const point = pointSnapped(event, drawStart)
       if (!drawStart) {
@@ -548,8 +714,8 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom,
       setHoverSnap(pointSnapped(event, drawStart))
       return
     }
-    if (tool === 'engineering') {
-      setHoverSnap(pointSnapped(event))
+    if (tool === 'engineering' || tool === 'route') {
+      setHoverSnap(pointSnapped(event, tool === 'route' ? routeDraft?.at(-1) || null : null))
     }
     if (resizeRef.current) {
       const point = pointFromEvent(event)
@@ -651,6 +817,9 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom,
   }
 
   const engineeringItems = layer === 'architecture' ? [] : (project.engineering?.[layer] || [])
+  const topologyRooms = useMemo(() => buildTopologyRooms(project.freeWalls, phaseView || 'proposed'), [project.freeWalls, phaseView])
+  const visibleRoutes = (project.routes || []).filter((route) => route.layer === layer)
+  const pointsToString = (points) => points.map((point) => point.x + ',' + point.y).join(' ')
 
   return <svg ref={svgRef} className={'planner-svg tool-' + tool} viewBox={viewBox.x + ' ' + viewBox.y + ' ' + viewBox.width + ' ' + viewBox.height} role="img" aria-label="Редактируемый архитектурный план квартиры" onPointerDown={handlePlanPointerDown} onPointerMove={movePointer} onPointerUp={endPointer} onPointerCancel={endPointer}>
     <defs>
@@ -665,6 +834,16 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom,
       <filter id="planner-room-shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="6" stdDeviation="5" floodColor="#111410" floodOpacity=".08" /></filter>
     </defs>
     <rect x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} className="planner-paper" fill="url(#planner-grid-large)" />
+    {project.underlay && <image className="planner-underlay" href={project.underlay.dataUrl} x={project.underlay.x} y={project.underlay.y} width={project.underlay.width} height={project.underlay.height} opacity={project.underlay.opacity} preserveAspectRatio="none" pointerEvents="none" />}
+    {topologyRooms.map((room, index) => {
+      const meta = topologyMetaFor(project, room, index)
+      const active = selected.type === 'topology-room' && selected.id === room.signature
+      return <g key={room.signature} className={'topology-room ' + (active ? 'active' : '')} onPointerDown={(event) => { if (tool !== 'select') return; event.stopPropagation(); setSelected({ type: 'topology-room', id: room.signature }) }}>
+        <polygon points={pointsToString(room.points)} />
+        <text x={room.centroid.x} y={room.centroid.y - 7} textAnchor="middle">{meta.name}</text>
+        <text className="topology-room__area" x={room.centroid.x} y={room.centroid.y + 15} textAnchor="middle">{room.area.toFixed(1)} м²</text>
+      </g>
+    })}
     {project.rooms.map((room) => {
       const active = selected.type === 'room' && selected.id === room.id
       const walls = {
@@ -691,7 +870,8 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom,
           const points = walls[side]
           const wallActive = active && selected.side === side
           const wall = room.walls[side]
-          return <g key={side}>
+          if (!wallVisibleForPhase(wall, phaseView)) return null
+          return <g key={side} className={'wall-phase-' + (wall.phase || 'existing')}>
             <line className={'plan-wall-hit ' + (wallActive ? 'active' : '')} x1={points[0]} y1={points[1]} x2={points[2]} y2={points[3]} onPointerDown={(e) => { if (tool !== 'select') return; e.stopPropagation(); setSelected({ type: 'room', id: room.id, side }) }} />
             <line className={'plan-wall ' + (wallActive ? 'active' : '')} style={{ strokeWidth: wallStroke(wall) }} x1={points[0]} y1={points[1]} x2={points[2]} y2={points[3]} pointerEvents="none" />
             {wall.openings.map((opening) => openingGlyph(room, side, opening))}
@@ -703,15 +883,27 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom,
         </g>}
       </g>
     })}
-    {project.freeWalls.map((wall) => {
+    {project.freeWalls.filter((wall) => wallVisibleForPhase(wall, phaseView)).map((wall) => {
       const active = selected.type === 'wall' && selected.id === wall.id
-      return <g key={wall.id} onPointerDown={(e) => { if (tool !== 'select') return; e.stopPropagation(); setSelected({ type: 'wall', id: wall.id }) }}>
+      return <g key={wall.id} className={'wall-phase-' + (wall.phase || 'new')} onPointerDown={(e) => { if (tool !== 'select') return; e.stopPropagation(); setSelected({ type: 'wall', id: wall.id }) }}>
         <line className={'free-wall-hit ' + (active ? 'active' : '')} x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2} />
         <line className={'free-wall-line ' + (active ? 'active' : '')} style={{ strokeWidth: wallStroke(wall) }} x1={wall.x1} y1={wall.y1} x2={wall.x2} y2={wall.y2} pointerEvents="none" />
         {wall.openings.map((opening) => freeOpeningGlyph(wall, opening))}
         <text className="plan-dimension" x={(wall.x1 + wall.x2) / 2} y={(wall.y1 + wall.y2) / 2 - 15} textAnchor="middle">{(wallLengthFree(wall) / 100).toFixed(2)} м</text>
       </g>
     })}
+    {visibleRoutes.map((route) => {
+      const active = selected.type === 'route' && selected.id === route.id
+      const spec = ROUTE_TYPES[route.type]
+      return <g key={route.id} className={'plan-route layer-' + route.layer + (active ? ' active' : '')} onPointerDown={(event) => { if (tool !== 'select') return; event.stopPropagation(); setSelected({ type: 'route', id: route.id }) }}>
+        <polyline points={pointsToString(route.points)} />
+        <text x={route.points[Math.floor(route.points.length / 2)]?.x || 0} y={(route.points[Math.floor(route.points.length / 2)]?.y || 0) - 10} textAnchor="middle">{spec?.glyph || 'TR'}</text>
+      </g>
+    })}
+    {tool === 'route' && routeDraft?.length > 0 && <g className={'plan-route draft layer-' + layer} pointerEvents="none">
+      <polyline points={pointsToString(hoverSnap && routeDraft.length ? [...routeDraft, hoverSnap] : routeDraft)} />
+      {routeDraft.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="6" />)}
+    </g>}
     {engineeringItems.map((item) => {
       const spec = ENGINEERING_ITEMS[item.type] || { glyph: '?', label: item.type }
       const active = selected.type === 'engineering' && selected.id === item.id
@@ -727,11 +919,12 @@ function FloorPlan2D({ project, selected, setSelected, onDragRoom, onResizeRoom,
       <circle cx={hoverSnap.x} cy={hoverSnap.y} r="9" />
       <text x={(drawStart.x + hoverSnap.x) / 2} y={(drawStart.y + hoverSnap.y) / 2 - 14} textAnchor="middle">{(Math.hypot(hoverSnap.x - drawStart.x, hoverSnap.y - drawStart.y) / 100).toFixed(2)} м · {hoverSnap.label}</text>
     </g>}
-    {!drawStart && hoverSnap && tool === 'engineering' && <g className="planner-snap-preview" pointerEvents="none"><circle cx={hoverSnap.x} cy={hoverSnap.y} r="8" /><text x={hoverSnap.x + 12} y={hoverSnap.y - 12}>{hoverSnap.label}</text></g>}
+    {calibrationPoints.map((point, index) => <g key={'cal-' + index} className="planner-calibration-point" pointerEvents="none"><circle cx={point.x} cy={point.y} r="9" /><text x={point.x + 14} y={point.y - 12}>Точка {index + 1}</text></g>)}
+    {!drawStart && hoverSnap && (tool === 'engineering' || tool === 'route') && <g className="planner-snap-preview" pointerEvents="none"><circle cx={hoverSnap.x} cy={hoverSnap.y} r="8" /><text x={hoverSnap.x + 12} y={hoverSnap.y - 12}>{hoverSnap.label}</text></g>}
   </svg>
 }
 
-function FloorPlan3D({ project, selected, setSelected, angle }) {
+function FloorPlan3D({ project, selected, setSelected, angle, phaseView }) {
   const mountRef = useRef(null)
   const stateRef = useRef(null)
 
@@ -827,6 +1020,7 @@ function FloorPlan3D({ project, selected, setSelected, angle }) {
     scene.add(grid)
 
     const raycaster = new THREE.Raycaster()
+    raycaster.params.Line.threshold = .15
     const pointer = new THREE.Vector2()
     const state = { scene, camera, renderer, controls, pickables: [], model: null, grid, radius: 8, maxHeight: 2.7, framed: false }
     stateRef.current = state
@@ -1123,17 +1317,58 @@ function FloorPlan3D({ project, selected, setSelected, angle }) {
       )
       SIDES.forEach((side) => {
         const wall = room.walls[side]
+        if (!wallVisibleForPhase(wall, phaseView)) return
         const selection = { type: 'room', id: room.id, side }
         buildWallWithOpenings(wallCoordsForRoom(room, side), wall, room.height, selection, isSelectedRoom && selected.side === side)
       })
     })
 
-    project.freeWalls.forEach((wall) => {
+    const topologyRooms = buildTopologyRooms(project.freeWalls, phaseView || 'proposed')
+    topologyRooms.forEach((room, index) => {
+      const meta = topologyMetaFor(project, room, index)
+      if (room.points.length < 3) return
+      const shape = new THREE.Shape()
+      room.points.forEach((point, pointIndex) => {
+        const sx = (point.x - center.x) / 100
+        const sy = -(point.y - center.y) / 100
+        if (pointIndex === 0) shape.moveTo(sx, sy)
+        else shape.lineTo(sx, sy)
+      })
+      shape.closePath()
+      const geometry = new THREE.ShapeGeometry(shape)
+      geometry.rotateX(-Math.PI / 2)
+      const active = selected.type === 'topology-room' && selected.id === room.signature
+      addMesh(
+        geometry,
+        makeFloorMaterial(meta.floorFinish, active),
+        { x: 0, y: -.012, z: 0 },
+        0,
+        { type: 'topology-room', id: room.signature }
+      )
+    })
+
+    project.freeWalls.filter((wall) => wallVisibleForPhase(wall, phaseView)).forEach((wall) => {
       const length = wallLengthFree(wall)
       if (length <= 0) return
       const coords = { x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2 }
       const selection = { type: 'wall', id: wall.id }
       buildWallWithOpenings(coords, wall, wall.height, selection, selected.type === 'wall' && selected.id === wall.id)
+    })
+
+    const routeColors = { electrical: 0xc28a16, plumbing: 0x2e7592, heating: 0xa94d3e }
+    ;(project.routes || []).forEach((route) => {
+      if (!route.points || route.points.length < 2) return
+      const vectors = route.points.map((point, index) => {
+        const t = route.points.length <= 1 ? 0 : index / (route.points.length - 1)
+        const height = ((route.startHeight || 0) * (1 - t) + (route.endHeight || 0) * t) / 100
+        return new THREE.Vector3((point.x - center.x) / 100, Math.max(.03, height), (point.y - center.y) / 100)
+      })
+      const geometry = new THREE.BufferGeometry().setFromPoints(vectors)
+      const material = new THREE.LineBasicMaterial({ color: routeColors[route.layer] || 0x6f756e })
+      const line = new THREE.Line(geometry, material)
+      line.userData.selection = { type: 'route', id: route.id }
+      model.add(line)
+      state.pickables.push(line)
     })
 
     state.model = model
@@ -1156,7 +1391,7 @@ function FloorPlan3D({ project, selected, setSelected, angle }) {
       state.camera.lookAt(state.controls.target)
       state.controls.update()
     }
-  }, [project, selected])
+  }, [project, selected, phaseView])
 
   useEffect(() => {
     const state = stateRef.current
@@ -1170,9 +1405,16 @@ function FloorPlan3D({ project, selected, setSelected, angle }) {
     state.controls.update()
   }, [angle])
 
+  const topologyRoomsForLabel = buildTopologyRooms(project.freeWalls, phaseView || 'proposed')
   const selectedName = selected.type === 'room'
     ? project.rooms.find((room) => room.id === selected.id)?.name
-    : project.freeWalls.find((wall) => wall.id === selected.id)?.name
+    : selected.type === 'wall'
+      ? project.freeWalls.find((wall) => wall.id === selected.id)?.name
+      : selected.type === 'route'
+        ? project.routes?.find((route) => route.id === selected.id)?.name
+        : selected.type === 'topology-room'
+          ? topologyMetaFor(project, topologyRoomsForLabel.find((room) => room.signature === selected.id) || { signature: selected.id }, 0).name
+          : ''
 
   return <div className="planner-three" ref={mountRef} role="img" aria-label="Интерактивная 3D модель квартиры">
     <div className="planner-three__legend"><span>Клик — выбрать</span><span>Drag — вращать</span><span>Колесо — масштаб</span></div>
@@ -1210,7 +1452,7 @@ function EngineeringInspector({ item, layer, onChange, onDelete }) {
 }
 
 function ValidationView({ project }) {
-  const issues = useMemo(() => validateProject(project), [project])
+  const issues = useMemo(() => [...validateProject(project), ...validateAdvancedProject(project)], [project])
   const errors = issues.filter((item) => item.severity === 'error').length
   const warnings = issues.filter((item) => item.severity === 'warn').length
   return <div className="planner-validation">
@@ -1221,8 +1463,10 @@ function ValidationView({ project }) {
 
 function MaterialsView({ project, onPriceChange }) {
   const metrics = useMemo(() => projectMetrics(project), [project])
+  const takeoffRows = useMemo(() => buildTakeoff(project), [project])
   const rows = useMemo(() => buildTakeoff(project), [project])
-  const grouped = rows.reduce((acc, row) => {
+  const packedRows = useMemo(() => packageTakeoff(rows, project.packageOverrides || {}), [rows, project.packageOverrides])
+  const grouped = packedRows.reduce((acc, row) => {
     ;(acc[row.group] ||= []).push(row)
     return acc
   }, {})
@@ -1237,7 +1481,7 @@ function MaterialsView({ project, onPriceChange }) {
     </div>
     <div className="planner-report-note"><b>Ведомость автоматически пересчитывается из геометрии.</b><span>Запасы и нормы здесь служат отправной точкой закупки. Перед заказом конструкционных материалов проверьте конкретную систему производителя, раскладку, основание и проектные требования.</span></div>
     <div className="planner-budget-total"><span>Ориентир по введённым ценам</span><strong>{Math.round(totalBudget).toLocaleString('ru-RU')} ₽</strong></div>
-    {Object.entries(grouped).map(([group, items]) => <section className="material-group" key={group}><div className="material-group__title"><span>{group}</span><small>{items.length} поз.</small></div>{items.map((row, index) => { const key = rowKey(row); const price = project.prices?.[key] ?? ''; return <div className="material-row" key={row.name + index}><div className="material-name"><strong>{row.name}</strong><small>{row.note}</small><a href={lemanaSearch(row.name)} target="_blank" rel="noreferrer">Подобрать в Лемана ПРО ↗</a></div><span>{row.qty} {row.unit}</span><label className="material-price"><input type="number" min="0" step="1" value={price} placeholder="цена" onChange={(e) => onPriceChange(key, e.target.value)} /><small>₽ / {row.unit}</small></label><b>запас {row.reserve}</b></div> })}</section>)}
+    {Object.entries(grouped).map(([group, items]) => <section className="material-group" key={group}><div className="material-group__title"><span>{group}</span><small>{items.length} поз.</small></div>{items.map((row, index) => { const key = rowKey(row); const price = project.prices?.[key] ?? ''; return <div className="material-row" key={row.name + index}><div className="material-name"><strong>{row.name}</strong><small>{row.note}</small><small className="package-hint">К закупке: {row.packages} {row.packageUnit}{row.packageSize !== 1 ? ' · упаковка ' + row.packageSize + ' ' + row.unit : ''}</small><a href={lemanaSearch(row.name)} target="_blank" rel="noreferrer">Подобрать в Лемана ПРО ↗</a></div><span>{row.qty} {row.unit}</span><label className="material-price"><input type="number" min="0" step="1" value={price} placeholder="цена" onChange={(e) => onPriceChange(key, e.target.value)} /><small>₽ / {row.unit}</small></label><b>запас {row.reserve}</b></div> })}</section>)}
   </div>
 }
 
@@ -1250,6 +1494,8 @@ function ReadinessView({ project }) {
     ['Отделка стен выбрана', project.rooms.every((room) => SIDES.every((side) => room.walls[side].finish)), 'для расчёта площадей'],
     ['Двери и окна внесены', metrics.openingCount > 0, metrics.openingCount ? metrics.openingCount + ' проёмов' : 'проверьте, не забыты ли проёмы'],
     ['Свободные стены проверены', project.freeWalls.every((wall) => wallLengthFree(wall) >= 20), project.freeWalls.length + ' отдельных стен'],
+    ['Произвольные контуры', project.freeWalls.length === 0 || buildTopologyRooms(project.freeWalls, 'proposed').length > 0, buildTopologyRooms(project.freeWalls, 'proposed').length + ' автопомещений'],
+    ['Инженерные трассы завершены', (project.routes || []).every((route) => route.points?.length >= 2), (project.routes || []).length + ' трасс'],
   ]
   const ready = checks.filter((item) => item[1]).length
   return <div className="planner-readiness">
@@ -1269,6 +1515,55 @@ function ReadinessView({ project }) {
   </div>
 }
 
+function loadPlannerVersions() {
+  try {
+    const value = JSON.parse(localStorage.getItem(VERSIONS_KEY) || '[]')
+    return Array.isArray(value) ? value.slice(0, 8) : []
+  } catch {
+    return []
+  }
+}
+
+async function optimizePlanImage(file) {
+  if (!file || !file.type.startsWith('image/')) throw new Error('Нужен файл изображения')
+  if (file.size > 15 * 1024 * 1024) throw new Error('Файл слишком большой: максимум 15 МБ')
+  const source = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error('Не удалось прочитать изображение'))
+    reader.readAsDataURL(file)
+  })
+  const image = await new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('Не удалось открыть изображение'))
+    img.src = source
+  })
+  const maxSide = 1800
+  const factor = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+  const width = Math.max(1, Math.round(image.naturalWidth * factor))
+  const height = Math.max(1, Math.round(image.naturalHeight * factor))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, width, height)
+  ctx.drawImage(image, 0, 0, width, height)
+  const dataUrl = canvas.toDataURL('image/jpeg', .84)
+  const planWidth = 1200
+  return {
+    dataUrl,
+    x: 0,
+    y: 0,
+    width: planWidth,
+    height: planWidth * height / width,
+    opacity: .42,
+    referenceCm: 100,
+    name: file.name.slice(0, 80),
+  }
+}
+
 export default function PlannerPage() {
   const [project, setProject] = useState(getInitialProject)
   const [selected, setSelected] = useState(() => ({ type: 'room', id: getInitialProject().rooms[0]?.id || '', side: 'north' }))
@@ -1278,6 +1573,10 @@ export default function PlannerPage() {
   const [layer, setLayer] = useState('architecture')
   const [tool, setTool] = useState('select')
   const [engineeringType, setEngineeringType] = useState('socket')
+  const [phaseView, setPhaseView] = useState('proposed')
+  const [routeType, setRouteType] = useState('power-25')
+  const [routeDraft, setRouteDraft] = useState([])
+  const [versions, setVersions] = useState(loadPlannerVersions)
   const [notice, setNotice] = useState('')
   const past = useRef([])
   const future = useRef([])
@@ -1285,8 +1584,51 @@ export default function PlannerPage() {
   const importRef = useRef(null)
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(project))
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(project))
+    } catch (error) {
+      console.warn('Planner project storage is full', error)
+    }
   }, [project])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VERSIONS_KEY, JSON.stringify(versions.slice(0, 8)))
+    } catch (error) {
+      console.warn('Planner versions storage is full', error)
+    }
+  }, [versions])
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (tool !== 'route') return
+      if (event.key === 'Escape') {
+        setRouteDraft([])
+        setTool('select')
+      }
+      if (event.key === 'Enter' && routeDraft.length >= 2) {
+        event.preventDefault()
+        const spec = ROUTE_TYPES[routeType]
+        const route = {
+          id: uid('route'),
+          name: spec.label,
+          type: routeType,
+          layer: spec.layer,
+          points: routeDraft,
+          startHeight: spec.defaultHeight,
+          endHeight: spec.defaultHeight,
+          slope: spec.slope || 0,
+          note: '',
+        }
+        commit((current) => ({ ...current, routes: [...(current.routes || []), route] }))
+        setSelected({ type: 'route', id: route.id })
+        setRouteDraft([])
+        setTool('select')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [tool, routeDraft, routeType])
 
   const commit = (updater) => {
     setProject((current) => {
@@ -1316,11 +1658,17 @@ export default function PlannerPage() {
 
   const selectedRoom = selected.type === 'room' ? project.rooms.find((room) => room.id === selected.id) : null
   const selectedWall = selected.type === 'wall' ? project.freeWalls.find((wall) => wall.id === selected.id) : null
+  const topologyRooms = useMemo(() => buildTopologyRooms(project.freeWalls, phaseView), [project.freeWalls, phaseView])
+  const selectedTopologyIndex = selected.type === 'topology-room' ? topologyRooms.findIndex((room) => room.signature === selected.id) : -1
+  const selectedTopology = selectedTopologyIndex >= 0 ? topologyRooms[selectedTopologyIndex] : null
   const selectedEngineering = selected.type === 'engineering' ? project.engineering?.[selected.layer]?.find((item) => item.id === selected.id) : null
+  const selectedRoute = selected.type === 'route' ? project.routes?.find((route) => route.id === selected.id) : null
   useEffect(() => {
     if (selected.type === 'room' && !selectedRoom && project.rooms[0]) setSelected({ type: 'room', id: project.rooms[0].id, side: 'north' })
     if (selected.type === 'wall' && !selectedWall && project.rooms[0]) setSelected({ type: 'room', id: project.rooms[0].id, side: 'north' })
-  }, [project.rooms.length, project.freeWalls.length])
+    if (selected.type === 'topology-room' && !selectedTopology) setSelected({ type: 'none', id: '' })
+    if (selected.type === 'route' && !selectedRoute) setSelected({ type: 'none', id: '' })
+  }, [project.rooms.length, project.freeWalls.length, project.routes?.length, topologyRooms.length])
 
   const updateRoom = (patch, sideOverride) => {
     if (sideOverride) setSelected((s) => ({ ...s, side: sideOverride }))
@@ -1392,6 +1740,108 @@ export default function PlannerPage() {
     }))
     setSelected({ type: 'none', id: '' })
   }
+  const updateTopologyRoom = (patch) => {
+    if (!selectedTopology) return
+    commit((current) => {
+      const index = buildTopologyRooms(current.freeWalls, phaseView).findIndex((room) => room.signature === selectedTopology.signature)
+      const room = index >= 0 ? buildTopologyRooms(current.freeWalls, phaseView)[index] : selectedTopology
+      const previous = topologyMetaFor(current, room, Math.max(0, index))
+      return { ...current, topologyMeta: { ...(current.topologyMeta || {}), [selectedTopology.signature]: { ...previous, ...patch } } }
+    })
+  }
+  const addRoutePoint = (point) => setRouteDraft((current) => [...current.slice(0, 119), { x: round(point.x, 1), y: round(point.y, 1) }])
+  const startRoute = (type) => {
+    const spec = ROUTE_TYPES[type]
+    if (!spec) return
+    setRouteType(type)
+    setLayer(spec.layer)
+    setRouteDraft([])
+    setTool('route')
+    setView('2d')
+    setSelected({ type: 'none', id: '' })
+  }
+  const finishRoute = () => {
+    if (routeDraft.length < 2) {
+      setNotice('Для трассы нужно минимум две точки')
+      return
+    }
+    const spec = ROUTE_TYPES[routeType]
+    const route = {
+      id: uid('route'),
+      name: spec.label,
+      type: routeType,
+      layer: spec.layer,
+      points: routeDraft,
+      startHeight: spec.defaultHeight,
+      endHeight: spec.defaultHeight,
+      slope: spec.slope || 0,
+      note: '',
+    }
+    commit((current) => ({ ...current, routes: [...(current.routes || []), route] }))
+    setSelected({ type: 'route', id: route.id })
+    setRouteDraft([])
+    setTool('select')
+  }
+  const updateRoute = (patch) => {
+    if (!selectedRoute) return
+    commit((current) => ({ ...current, routes: (current.routes || []).map((route) => route.id === selectedRoute.id ? { ...route, ...patch } : route) }))
+  }
+  const deleteRoute = () => {
+    if (!selectedRoute) return
+    commit((current) => ({ ...current, routes: (current.routes || []).filter((route) => route.id !== selectedRoute.id) }))
+    setSelected({ type: 'none', id: '' })
+  }
+  const importUnderlay = async (file) => {
+    if (!file) return
+    try {
+      const underlay = await optimizePlanImage(file)
+      commit((current) => ({ ...current, underlay }))
+      setLayer('architecture')
+      setView('2d')
+      setTool('select')
+      setNotice('Подложка загружена. Укажите эталон и откалибруйте по двум точкам.')
+    } catch (error) {
+      setNotice(error?.message || 'Не удалось загрузить изображение')
+    }
+  }
+  const updateUnderlay = (patch) => commit((current) => ({ ...current, underlay: current.underlay ? { ...current.underlay, ...patch } : null }))
+  const calibrateCurrentUnderlay = (a, b) => {
+    commit((current) => ({ ...current, underlay: calibrateUnderlay(current.underlay, a, b, current.underlay?.referenceCm || 100) }))
+    setTool('select')
+    setNotice('Масштаб подложки откалиброван')
+  }
+  const saveVersion = () => {
+    const name = window.prompt('Название версии проекта', 'Версия ' + (versions.length + 1))
+    if (!name) return
+    const copy = snapshotProject(project)
+    const version = {
+      id: uid('version'),
+      name: name.slice(0, 80),
+      createdAt: new Date().toISOString(),
+      summary: projectMetrics(project).floorArea.toFixed(1) + ' м² · ' + ((project.routes || []).length) + ' трасс',
+      project: copy,
+    }
+    setVersions((current) => [version, ...current].slice(0, 8))
+    setNotice('Версия проекта сохранена')
+  }
+  const restoreVersion = (version) => {
+    const source = { ...version.project, underlay: project.underlay || version.project.underlay }
+    const next = normalizeProject(source)
+    commit(next)
+    setSelected({ type: next.rooms[0] ? 'room' : 'none', id: next.rooms[0]?.id || '', side: 'north' })
+    setNotice('Восстановлена версия «' + version.name + '»')
+  }
+  const deleteVersion = (id) => setVersions((current) => current.filter((item) => item.id !== id))
+  const startBlankProject = () => {
+    const next = normalizeProject({ ...sampleProject(), name: 'Новый проект', rooms: [], freeWalls: [], routes: [], engineering: { electrical: [], plumbing: [], heating: [] }, topologyMeta: {}, prices: {} })
+    commit(next)
+    setSelected({ type: 'none', id: '' })
+    setLayer('architecture')
+    setView('2d')
+    setTool('wall')
+    setNotice('Пустой CAD-проект создан — начните замкнутый контур стен')
+  }
+
   const deleteSelectedRoom = () => {
     if (!selectedRoom) return
     commit((current) => ({ ...current, rooms: current.rooms.filter((room) => room.id !== selectedRoom.id) }))
@@ -1474,7 +1924,8 @@ export default function PlannerPage() {
       <div className="planner-top-actions">
         <button type="button" onClick={undo} disabled={!past.current.length}>↶ Назад</button>
         <button type="button" onClick={redo} disabled={!future.current.length}>↷ Вперёд</button>
-        <button type="button" onClick={exportProject}>Экспорт</button>
+        <button type="button" onClick={saveVersion}>Версия</button>
+        <button type="button" onClick={exportProject}>JSON</button>
         <button type="button" onClick={() => importRef.current?.click()}>Импорт</button>
         <input ref={importRef} type="file" accept="application/json,.json" hidden onChange={(e) => importProject(e.target.files?.[0])} />
       </div>
@@ -1484,17 +1935,21 @@ export default function PlannerPage() {
       <button type="button" className={tab === 'plan' ? 'active' : ''} onClick={() => setTab('plan')}>План и 3D</button>
       <button type="button" className={tab === 'materials' ? 'active' : ''} onClick={() => setTab('materials')}>Материалы</button>
       <button type="button" className={tab === 'readiness' ? 'active' : ''} onClick={() => setTab('readiness')}>Перед началом работ</button>
+      <button type="button" className={tab === 'works' ? 'active' : ''} onClick={() => setTab('works')}>Работы</button>
+      <button type="button" className={tab === 'documents' ? 'active' : ''} onClick={() => setTab('documents')}>Чертежи / PDF</button>
       <button type="button" className={tab === 'validation' ? 'active' : ''} onClick={() => setTab('validation')}>Проверка проекта</button>
-      <div className="planner-tabs__summary"><span>{project.rooms.length} помещений</span><b>{metrics.floorArea.toFixed(1)} м²</b></div>
+      <div className="planner-tabs__summary"><span>{metrics.roomCount} помещений</span><b>{metrics.floorArea.toFixed(1)} м²</b></div>
     </div>
 
     {tab === 'plan' && <div className="planner-workspace">
       <aside className="planner-objects">
         {layer === 'architecture' ? <>
-          <div className="planner-panel-head"><div><span>ОБЪЕКТЫ</span><strong>Помещения и стены</strong></div><button type="button" onClick={addRoom}>+ Комната</button></div>
+          <div className="planner-panel-head"><div><span>ОБЪЕКТЫ</span><strong>Помещения и стены</strong></div><button type="button" onClick={addRoom}>+ Прямоуг.</button></div>
+          <div className="planner-blank-actions"><button type="button" onClick={startBlankProject}>Новый CAD-проект</button><small>Для сложной планировки рисуйте стены и замыкайте контуры.</small></div>
           <div className="planner-object-list">
             {project.rooms.map((room) => <button type="button" key={room.id} className={selected.type === 'room' && selected.id === room.id ? 'active' : ''} onClick={() => { setTool('select'); setSelected({ type: 'room', id: room.id, side: 'north' }) }}><span className="object-index">{String(project.rooms.indexOf(room) + 1).padStart(2, '0')}</span><div><strong>{room.name}</strong><small>{room.width} × {room.depth} см · {(room.width * room.depth / 10000).toFixed(1)} м²</small></div></button>)}
           </div>
+          {topologyRooms.length > 0 && <div className="planner-auto-rooms"><div className="planner-section-head"><strong>Автопомещения</strong><span>{topologyRooms.length}</span></div>{topologyRooms.map((room, index) => { const meta = topologyMetaFor(project, room, index); return <button type="button" key={room.signature} className={selected.type === 'topology-room' && selected.id === room.signature ? 'active' : ''} onClick={() => { setTool('select'); setSelected({ type: 'topology-room', id: room.signature }) }}><span>T{index + 1}</span><div><strong>{meta.name}</strong><small>{room.area.toFixed(2)} м² · {room.perimeter.toFixed(2)} м</small></div></button> })}</div>}
           <div className="planner-draw-actions">
             <button className={tool === 'wall' ? 'active' : ''} type="button" onClick={() => { setTool(tool === 'wall' ? 'select' : 'wall'); setView('2d') }}>{tool === 'wall' ? '✓ Закончить стены' : '✎ Рисовать стены'}</button>
             <button type="button" onClick={() => addFreeWall()}>+ Стена по координатам</button>
@@ -1502,33 +1957,49 @@ export default function PlannerPage() {
           {tool === 'wall' && <div className="planner-tool-help"><b>Режим построения</b><span>Кликайте последовательные точки. Есть привязка к углам, серединам, сетке и углам 0/45/90°. Esc сбрасывает текущую цепочку.</span></div>}
           {project.freeWalls.length > 0 && <div className="planner-object-list planner-object-list--walls">{project.freeWalls.map((wall) => <button type="button" key={wall.id} className={selected.type === 'wall' && selected.id === wall.id ? 'active' : ''} onClick={() => { setTool('select'); setSelected({ type: 'wall', id: wall.id }) }}><span className="object-index">W</span><div><strong>{wall.name}</strong><small>{(wallLengthFree(wall) / 100).toFixed(2)} м · {wall.height} см</small></div></button>)}</div>}
           <div className="planner-grid-control"><span>Привязка к сетке</span><select value={project.grid} onChange={(e) => commit((current) => ({ ...current, grid: Number(e.target.value) }))}><option value="10">10 см</option><option value="20">20 см</option><option value="50">50 см</option></select></div>
+          <UnderlayPanel
+            underlay={project.underlay}
+            onImport={importUnderlay}
+            onChange={updateUnderlay}
+            onRemove={() => commit((current) => ({ ...current, underlay: null }))}
+            calibrating={tool === 'calibrate'}
+            onStartCalibration={() => { if (project.underlay) { setTool('calibrate'); setView('2d'); setNotice('Кликните две точки на подложке с известным расстоянием') } }}
+          />
           <button className="planner-reset" type="button" onClick={resetProject}>Загрузить пример заново</button>
-        </> : <EngineeringPalette layer={layer} activeType={tool === 'engineering' ? engineeringType : ''} onChoose={(type) => { setEngineeringType(type); setTool('engineering'); setView('2d') }} onSelectMode={() => setTool('select')} />}
+        </> : <>
+          <EngineeringPalette layer={layer} activeType={tool === 'engineering' ? engineeringType : ''} onChoose={(type) => { setEngineeringType(type); setRouteDraft([]); setTool('engineering'); setView('2d') }} onSelectMode={() => { setRouteDraft([]); setTool('select') }} />
+          <RouteToolbox layer={layer} activeType={routeType} drawing={tool === 'route'} draftCount={routeDraft.length} onChoose={startRoute} onFinish={finishRoute} onCancel={() => { setRouteDraft([]); setTool('select') }} />
+        </>}
       </aside>
 
       <section className="planner-stage">
         <div className="planner-layerbar">{Object.entries(ENGINEERING_LAYERS).map(([key, item]) => <button key={key} type="button" className={layer === key ? 'active' : ''} onClick={() => { setLayer(key); setTool('select'); if (key === 'architecture') setSelected({ type: 'room', id: project.rooms[0]?.id || '', side: 'north' }); else { setView('2d'); setSelected({ type: 'none', id: '' }) } }}><b>{item.short}</b><span>{item.label}</span></button>)}</div>
         <div className="planner-stage-toolbar">
+          <div className="phase-switch" aria-label="Стадия проекта"><button type="button" className={phaseView === 'existing' ? 'active' : ''} onClick={() => setPhaseView('existing')}>Как есть</button><button type="button" className={phaseView === 'proposed' ? 'active' : ''} onClick={() => setPhaseView('proposed')}>Проект</button><button type="button" className={phaseView === 'all' ? 'active' : ''} onClick={() => setPhaseView('all')}>Все</button></div>
           <div className="view-switch"><button type="button" className={view === '2d' ? 'active' : ''} onClick={() => setView('2d')}>2D план</button><button type="button" className={view === '3d' ? 'active' : ''} onClick={() => setView('3d')}>3D вид</button></div>
           {view === '3d' && <div className="angle-control"><button type="button" onClick={() => setAngle((a) => a - 15)}>↶</button><span>{angle}°</span><button type="button" onClick={() => setAngle((a) => a + 15)}>↷</button></div>}
-          <div className="stage-hint">{view === '2d' ? 'Перетаскивайте помещения; круглый маркер меняет размер. План автоматически вписывается в рабочую область.' : 'Вращайте модель мышью или пальцем; клик по стене или полу открывает параметры.'}</div>
+          <div className="stage-hint">{view === '2d' ? (tool === 'wall' ? 'Рисуйте последовательные стены. Замкнутый контур автоматически станет помещением.' : tool === 'route' ? 'Кликайте точки трассы. Enter — сохранить, Esc — отменить.' : tool === 'calibrate' ? 'Кликните две точки эталонного размера на подложке.' : 'Выбирайте и редактируйте помещения, стены, инженерные точки и трассы.') : 'Вращайте модель мышью или пальцем; проектный/существующий вид учитывает стадии стен.'}</div>
         </div>
         <div className="planner-canvas">
-          {view === '2d' ? <FloorPlan2D project={project} selected={selected} setSelected={setSelected} onDragRoom={dragRoom} onResizeRoom={resizeRoom} tool={tool} layer={layer} engineeringType={engineeringType} onAddFreeWall={addFreeWall} onAddEngineering={addEngineeringPoint} /> : <FloorPlan3D project={project} selected={selected} setSelected={setSelected} angle={angle} />}
+          {view === '2d' ? <FloorPlan2D project={project} selected={selected} setSelected={setSelected} onDragRoom={dragRoom} onResizeRoom={resizeRoom} tool={tool} layer={layer} engineeringType={engineeringType} onAddFreeWall={addFreeWall} onAddEngineering={addEngineeringPoint} routeDraft={routeDraft} onAddRoutePoint={addRoutePoint} phaseView={phaseView} onCalibrateUnderlay={calibrateCurrentUnderlay} /> : <FloorPlan3D project={project} selected={selected} setSelected={setSelected} angle={angle} phaseView={phaseView} />}
         </div>
         <div className="planner-scale"><i /><span>100 см</span></div>
       </section>
 
       <aside className="planner-inspector">
-        <div className="planner-panel-head"><div><span>ПАРАМЕТРЫ</span><strong>{selectedRoom ? selectedRoom.name : selectedWall ? selectedWall.name : selectedEngineering ? (ENGINEERING_ITEMS[selectedEngineering.type]?.label || 'Инженерная точка') : 'Выберите объект'}</strong></div></div>
+        <div className="planner-panel-head"><div><span>ПАРАМЕТРЫ</span><strong>{selectedRoom ? selectedRoom.name : selectedWall ? selectedWall.name : selectedTopology ? topologyMetaFor(project, selectedTopology, selectedTopologyIndex).name : selectedRoute ? selectedRoute.name : selectedEngineering ? (ENGINEERING_ITEMS[selectedEngineering.type]?.label || 'Инженерная точка') : 'Выберите объект'}</strong></div></div>
         {selectedRoom && <RoomInspector room={selectedRoom} side={selected.side || 'north'} onRoomChange={updateRoom} onWallChange={updateRoomWall} onDelete={deleteSelectedRoom} onDuplicate={duplicateRoom} />}
         {selectedWall && <FreeWallInspector wall={selectedWall} onChange={updateFreeWall} onDelete={deleteSelectedWall} />}
+        {selectedTopology && <TopologyRoomInspector project={project} room={selectedTopology} index={selectedTopologyIndex} onChange={updateTopologyRoom} />}
+        {selectedRoute && <RouteInspector route={selectedRoute} onChange={updateRoute} onDelete={deleteRoute} />}
         {selectedEngineering && <EngineeringInspector item={selectedEngineering} layer={selected.layer} onChange={updateEngineeringPoint} onDelete={deleteEngineeringPoint} />}
       </aside>
     </div>}
 
     {tab === 'materials' && <MaterialsView project={project} onPriceChange={(key, value) => commit((current) => ({ ...current, prices: { ...(current.prices || {}), [key]: value === '' ? '' : Math.max(0, Number(value) || 0) } }))} />}
     {tab === 'readiness' && <ReadinessView project={project} />}
+    {tab === 'works' && <WorkPlanView project={project} />}
+    {tab === 'documents' && <DocumentsView project={project} rows={takeoffRows} versions={versions} onSaveVersion={saveVersion} onRestoreVersion={restoreVersion} onDeleteVersion={deleteVersion} onPrint={() => window.print()} />}
     {tab === 'validation' && <ValidationView project={project} />}
 
     {notice && <div className="planner-toast" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice('')}>×</button></div>}
